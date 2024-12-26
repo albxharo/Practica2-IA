@@ -1,0 +1,666 @@
+#region Copyright
+// MIT License
+// 
+// Copyright (c) 2023 David María Arribas
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+#endregion
+
+using System;
+using System.Collections.Generic;
+using Navigation.Interfaces;
+using Navigation.World;
+using UnityEngine;
+
+
+namespace GrupoC {
+    public class SearchAgent : INavigationAgent {
+        public CellInfo CurrentObjective { get; private set; }
+        public Vector3 CurrentDestination { get; private set; }
+        public int NumberOfDestinations { get; private set; }
+
+        private WorldInfo _worldInfo;
+        private INavigationAlgorithm _navigationAlgorithm;
+        private CellInfo[] _objectives;
+        private Queue<CellInfo> _path;
+
+        private readonly List<CellInfo> visited = new();
+
+
+        public int i = 0;
+        private CellInfo[] _enemies;
+        private CellInfo[] _treasures;
+
+        public void Initialize(WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm) {
+            _worldInfo = worldInfo;
+            _navigationAlgorithm = navigationAlgorithm;
+            _treasures = _worldInfo.Targets; // Tesoros
+            _enemies = _worldInfo.Enemies;
+        }
+
+        public Vector3? GetNextDestination(Vector3 position) {
+            // El agente comienza obteniendo todos los objetivos
+            if (_objectives == null) {
+                CellInfo start_position = _worldInfo.FromVector3(position);
+                _objectives = GetDestinations(start_position);
+
+                CurrentObjective = _objectives[_objectives.Length - 1];
+                NumberOfDestinations = _objectives.Length;
+            }
+
+            // Para el primer camino
+            if (_path == null) {
+                CellInfo currentPosition = _worldInfo.FromVector3(position);
+                CellInfo[] path = _navigationAlgorithm.GetPath(currentPosition, CurrentObjective);
+                _path = new Queue<CellInfo>(path);
+
+            }
+
+            // Para el resto de caminos
+            if (_path.Count == 0) {
+                CellInfo currentPosition = _worldInfo.FromVector3(position);
+                visited.Add(CurrentObjective);
+                _objectives = GetDestinations(currentPosition);
+
+                CurrentObjective = _objectives[_objectives.Length - 1];
+                NumberOfDestinations = _objectives.Length;
+
+                CellInfo[] path = _navigationAlgorithm.GetPath(currentPosition, CurrentObjective);
+                _path = new Queue<CellInfo>(path);
+            }
+
+            // Calcula la ruta hacia el objetivo
+            if (_path.Count > 0) {
+                CellInfo destination = _path.Dequeue();
+                // Si el agente colisiona con un enemigo mientras completa otros objetivos
+                CheckEnemyCollision(position, destination);
+                CurrentDestination = _worldInfo.ToWorldPosition(destination);
+            }
+            return CurrentDestination;
+        }
+
+        private CellInfo[] GetDestinations(CellInfo current) {
+            // Se añade Exit como objetivo final (primero en la lista)
+            List<CellInfo> targets = new() { _worldInfo.Exit };
+
+            // Se añaden los enemigos ordenados como segundo objetivo
+            _enemies = _worldInfo.Enemies; // Toma las posiciones más recientes de los enemigos
+            GetEnemies(targets, _enemies, current);
+
+            // Se añaden los tesoros ordenados como primer objetivo
+            GetTreasures(targets, _treasures, visited, current);
+
+            return targets.ToArray();
+        }
+
+        /// <summary>
+        /// Añade a la lista de objetivos los enemigos a capturar en función de la
+        /// distancia entre el agente y los mismos
+        /// </summary>
+        /// <param name="targets">Lista de objetivos</param>
+        /// <param name="cells">Lista de enemigos</param>
+        /// <param name="current">Posición actual del agente</param>
+        private void GetEnemies(List<CellInfo> targets, CellInfo[] cells, CellInfo current) {
+            CellInfo[] aux = cells;
+            int[] distance = new int[aux.Length]; // Distancia desde la posición actual hasta los objetos
+
+            // Se calcula la distancia para cada enemigo
+            for (int i = 0; i < distance.Length; i++) {
+                distance[i] = GetDistance(aux[i], current);
+            }
+
+            // Ordena los elementos por distancia
+            // El agente prioriza los enemigos  más cercanos
+            Array.Sort(distance, aux);
+            Array.Reverse(aux);
+
+            for (int i = 0; i < aux.Length; i++) {
+                if (aux[i].GameObject != null) { targets.Add(aux[i]); }
+            }
+        }
+
+        /// <summary>
+        /// Añade a la lista de objetivos los tesoros a recoger en función de la 
+        /// distancia entre el agente y los mismos
+        /// </summary>
+        /// <param name="targets">Lista de objetivos</param>
+        /// <param name="cells">Lista de tesoros</param>
+        /// <param name="completed">Marca los tesoros ya recogidos</param>
+        /// <param name="current">Posición actual del agente</param>
+        private void GetTreasures(List<CellInfo> targets, CellInfo[] cells, List<CellInfo> completed, CellInfo current)
+        {
+            CellInfo[] aux = cells;
+            int[] distance = new int[aux.Length]; // Distancia desde la posición actual hasta los objetos
+
+            // Se calcula la distancia para cada tesoro
+            for (int i = 0; i < distance.Length; i++) {
+                distance[i] = GetDistance(aux[i], current);
+            }
+
+            // Ordena los elementos por distancia
+            // El agente prioriza los tesoros más cercanos
+            Array.Sort(distance, aux);
+            Array.Reverse(aux);
+
+            for (int i = 0; i < aux.Length; i++) {
+                if (!completed.Contains(aux[i])) {
+                    targets.Add(aux[i]);              
+                }
+            }
+        }
+
+        // Calcula la distancia entre la posición actual la posición objetivo
+        private int GetDistance(CellInfo target, CellInfo current) {
+            return Math.Abs(current.x - target.x) + Math.Abs(current.x - target.y);
+        }
+
+        /// <summary>
+        /// Comprueba si en el momento actual el agente está colisionando con un 
+        /// enemigo o viceversa
+        /// </summary>
+        /// <param name="position">Posición actual del agente</param>
+        /// <param name="destination">Posición destino</param>
+        private void CheckEnemyCollision(Vector3 position, CellInfo destination) {
+            for (int i = 0; i < _enemies.Length; i++) {
+                CellInfo currentPosition = _worldInfo.FromVector3(position);
+                _enemies = _worldInfo.Enemies;
+                if (_enemies[i].Equals(currentPosition)) {
+                    Debug.Log(_enemies[i]);
+                    _objectives = GetDestinations(destination);
+                    NumberOfDestinations = _objectives.Length;
+                }
+            }
+        }
+    }
+
+#region Copyright
+// MIT License
+// 
+// Copyright (c) 2023 David María Arribas
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+#endregion
+
+using Navigation.Interfaces;
+using Navigation.World;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+namespace GrupoC
+{
+    /// <summary>
+    /// Almacena la información de CellInfo junto con el coste del nodo y la 
+    /// información de su precedesor
+    /// </summary>
+    public class Node
+    {
+        public CellInfo cell;
+        public Node predecessor;
+        public int h_cost; // h(n) Coste de la heurística
+        public int g_cost; // g(n) Coste acumulado 
+        public int f_cost; // f(n) Función de evaluación de A*
+
+        public Node(CellInfo cell, int cost)
+        {
+            this.cell = cell;
+            this.f_cost = cost;
+        }
+    }
+
+    public enum Directions
+    {
+        None,
+        Up,
+        Right,
+        Down,
+        Left
+    }
+
+    /// <summary>
+    /// Implementa dos algoritmos de búsqueda: A* para los cofres y la meta
+    /// y Hill Climbing para los enemigos en movimiento
+    /// </summary>
+    public class NavigationalAlgorithms : INavigationAlgorithm
+    {
+        private WorldInfo world;
+
+        public void Initialize(WorldInfo worldInfo)
+        {
+            world = worldInfo;
+        }
+
+        /// <summary>
+        /// Ejecutar el algoritmo de búsqueda correspondiente en función del 
+        /// tipo de objetivo actual.
+        /// </summary>
+        /// <param name="startNode">Posición inicial del agente</param>
+        /// <param name="targetNode">Posición objetivo del agente</param>
+        /// <returns>El camino a recorrer por el agente</returns>
+        public CellInfo[] GetPath(CellInfo startNode, CellInfo targetNode)
+        {
+            if (targetNode.Type == CellInfo.CellType.Enemy)
+            {
+                Debug.Log("Hill Climbing");
+                CellInfo[] path = HillClimbingMovement.GetPathHillClimbing(startNode, targetNode, world);
+                return path;
+            }
+            else
+            {
+                Debug.Log("A*");
+                CellInfo[] path = AstarMovement.GetPathAStar(startNode, targetNode, world);
+                return path;
+            }
+        }
+    }
+}
+
+using Navigation.World;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace GrupoC
+{
+    public static class AstarMovement 
+    {
+
+        /// <summary>
+        /// Implementación el algoritmo A* a partir de la función f(n), que
+        /// resulta de la suma del coste acumulado y el cálculo de una  
+        /// heurística a partir de la distancia hasta la meta.
+        /// </summary>
+        /// <param name="startNode">Posición inicial del agente</param>
+        /// <param name="targetNode">Posición objetivo del agente</param>
+        /// <returns>El camino a recorrer utilizando A*</returns>
+        public static CellInfo[] GetPathAStar(CellInfo startNode, CellInfo targetNode, WorldInfo world)
+        {
+            // Inicialización de las estructuras de A* 
+            List<Node> OpenList = new();  // Emula una cola de prioridad: OpenList 
+            List<Node> ClosedList = new(); // Acumulación de los nodos visitados: ClosedList
+            List<Node> adjacents = new(); // Lista auxiliar que evalúa los nodos vecinos de current
+
+
+            Node start_node = new(startNode, 0); // Se asigna coste nulo al primer nodo
+            // Añadir el primer nodo a OpenList.
+            OpenList.Add(start_node);
+
+            // El algoritmo se ejecuta hasta que OpenList quede vacía
+            while (OpenList.Count != 0)
+            {
+                // Escoge el nodo con menor coste de OpenList
+                Node current_node = ExtractMin(OpenList);
+
+                // Comprueba si el nodo actual es el objetivo
+                // Si lo es entonces el algoritmo termina
+                if (current_node.cell == targetNode)
+                {
+                    return ReconstructPath(current_node, start_node);
+                }
+
+                // Comprueba si el nodo ha sido visitado 
+                if (!ClosedList.Contains(current_node))
+                {
+                    //Añade el elemento si no se encuentra en ClosedList
+                    ClosedList.Add(current_node);
+                    // Los nodos que entran en visitados se sacan de OpenList
+                    OpenList.Remove(current_node);
+                    // Vacía la lista de adyacentes para recalcular los del nodo actual
+                    adjacents.Clear();
+                    adjacents = GetSuccessors(current_node, targetNode, world);
+
+                    // Actualiza los vecinos transitables en OpenList
+                    foreach (Node node in adjacents)
+                    {
+                        if (node.cell.Type != CellInfo.CellType.Limit && node.cell.Type != CellInfo.CellType.Wall)
+                        {
+                            if (!ClosedList.Contains(node))
+                            {
+                                UpdateNode(OpenList, node);
+                            }
+                        }
+                    }
+                }
+            }
+            return new CellInfo[1];
+        }
+
+        /// <summary>
+        /// Emula la capacidad de una cola de prioridad de devolver el 
+        /// elemento con menor coste
+        /// </summary>
+        /// <param name="list">OpenList del algoritmo A*</param>
+        /// <returns>El nodo con la función de evaluación más pequeña</returns>
+        private static Node ExtractMin(List<Node> list)
+        {
+            int index = 0;
+            int min_val = list[index].f_cost;
+
+            foreach (Node node in list)
+            {
+                if (node.f_cost < min_val)
+                {
+                    min_val = node.f_cost;
+                    index = list.IndexOf(node);
+                }
+            }
+            return list[index];
+        }
+
+        /// <summary>
+        /// Comprueba si el nodo se encuentra en Openlist y actualiza el valor
+        /// del mismo si encuentra hasta dicho nodo que es más barato
+        /// </summary>
+        /// <param name="queue">OpenList</param>
+        /// <param name="current">Nodo a actualizar</param>  
+        private static void UpdateNode(List<Node> queue, Node current)
+        {
+            // Si CellInfo ya se encuentra en OpenList lo actualiza
+            if (queue.Exists(c => c.cell == current.cell))
+            {
+                // Busca el Nodo actual y su índice 
+                Node aux = queue.Find(c => c.cell == current.cell);
+                int index = queue.IndexOf(aux);
+                if (index != -1)
+                {
+                    // Si el coste actual es menor que el que ya hay 
+                    // almacenado se actualiza
+                    if (current.f_cost < aux.f_cost)
+                    {
+                        queue.Remove(aux);
+                        queue.Add(current);
+                    }
+                }
+            }
+            // Si no se encuentra en OpenList se añade
+            else { queue.Add(current); }
+        }
+
+        /// <summary>
+        /// Evalúa y extrae los sucesores más adecuados siguiendo el algoritmo
+        /// Hill Climbing
+        /// </summary>
+        /// <param name="current">Nodo actual</param>
+        /// <param name="targetNode">Nodo objetivo</param>
+        /// <returns>Lista de vecinos caminables de Hill Climbing</returns>
+        private static List<Node> GetSuccessors(Node current, CellInfo targetNode, WorldInfo world)
+        {
+            CellInfo neighbour;
+            List<Node> list = new();
+
+            // Para cada posible sucesor del nodo actual
+            for (int i = 0; i < 4; i++)
+            {
+                Directions direction = GetDirection(i);
+                neighbour = GetNeighbour(current.cell, direction, world);
+                if (neighbour.Walkable)
+                {
+                    // Calcula f(n) = g(n) + h(n) reutilizando la fórmula del A*
+                    int g = current.g_cost + 1;
+                    int h = ManhattanDistance(neighbour.x, neighbour.y, targetNode.x, targetNode.y);
+                    int f = g + h;
+                    Node aux = new(neighbour, f)
+                    {
+                        // Añade el nodo actual como padre del sucesor
+                        predecessor = current,
+                        h_cost = h,
+                        g_cost = g
+                    };
+                    list.Add(aux);
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Recalcula el camino desde el objetivo al nodo inicial para que 
+        /// sea recorrido por el agente
+        /// </summary>
+        /// <param name="current">Nodo con la posición objetivo</param>
+        /// <param name="start">Nodo con la posición inicial</param>
+        /// <returns>Array con las posiciones a recorrer</returns>
+        private static CellInfo[] ReconstructPath(Node current, Node start)
+        {
+            List<CellInfo> path = new();
+            Node aux = current;
+
+            while (aux != null && aux != start)
+            {
+                path.Add(aux.cell);
+                aux = aux.predecessor;
+            }
+            path.Reverse();
+            return path.ToArray();
+        }
+
+
+        // Calcula la heurística h(n) 
+        public static int ManhattanDistance(int current_x, int current_y, int target_x, int target_y)
+        {
+            // Fórmula de la Distancia Manhattan: |x1 - x2| + |y1 - y2|
+            // Para entornos cuadriculados con movimiento en direcciones verticales y horizontales
+            return Math.Abs(current_x - target_x) + Math.Abs(current_y - target_y);
+        }
+
+        public static Directions GetDirection(int n)
+        {
+            return n switch
+            {
+                0 => Directions.Up,
+                1 => Directions.Right,
+                2 => Directions.Down,
+                3 => Directions.Left,
+                _ => Directions.None,
+            };
+        }
+        public static CellInfo GetNeighbour(CellInfo current, Directions direction, WorldInfo world)
+        {
+            CellInfo neighbour = direction switch
+            {
+                Directions.Up => world[current.x, current.y - 1],
+                Directions.Right => world[current.x + 1, current.y],
+                Directions.Down => world[current.x, current.y + 1],
+                Directions.Left => world[current.x - 1, current.y],
+                Directions.None => throw new NotImplementedException(),
+                _ => throw new NotImplementedException(),
+            };
+            return neighbour;
+        }
+    }
+}
+
+using Navigation.World;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace GrupoC
+{
+    public static class HillClimbingMovement
+    {
+        /// <summary>
+        /// Implementa el algoritmo Hill Climbing. Al estar pensado para 
+        /// elementos en movimiento no acumula los nodos  visitados.
+        /// </summary>
+        /// <param name="startNode">Posición inicial del agente</param>
+        /// <param name="targetNode">Posición objetivo del agente</param>
+        /// <returns>El camino a recorrer utilizando HillClimbing</returns>
+        public static CellInfo[] GetPathHillClimbing(CellInfo startNode, CellInfo targetNode, WorldInfo world)
+        {
+            // Initializa las estructuras vacías
+            Node start_node = new(startNode, 0);
+            Node current_node = start_node;
+            Node best_neighbor;
+
+            // Atribuye un coste al primer nodo
+            start_node.h_cost = ManhattanDistance(start_node.cell.x, start_node.cell.y, targetNode.x, targetNode.y);
+
+            // Comprueba que el nodo actual no es el objetivo 
+            while (current_node.cell != targetNode)
+            {
+                // Expande el nodo actual para comprobar qué vecino tiene el menor coste asociado
+                best_neighbor = GetBestNeighbor(current_node, targetNode, world);
+                // Si ningún vecino es mejor se termina el algoritmo
+                if (best_neighbor.h_cost >= current_node.h_cost)
+                {
+                    return ReconstructPath(current_node, start_node);
+                }
+                // Actualiza el valor del nodo actual con el del mejor de sus vecinos
+                current_node = best_neighbor;
+            }
+            return ReconstructPath(current_node, start_node);
+        }
+
+
+        /// <summary>
+        /// Evalúa la selección de sucesores caminables del algoritmo Hill Climbing
+        /// y escoge el que tenga el menor coste
+        /// </summary>
+        /// <param name="current">Nodo actual</param>
+        /// <param name="targetNode">Nodo objetivo</param>
+        /// <returns>El vecino más adecuado para el camino</returns>
+        private static Node GetBestNeighbor(Node current, CellInfo targetNode, WorldInfo world)
+        {
+            Node node = current;
+            List<Node> list = GetSuccessors(node, targetNode, world);
+            Node best = current;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                node = list[i];
+                if (best.h_cost > node.h_cost)
+                {
+                    best = node;
+                }
+            }
+            // Devuelve el vecino con menor coste
+            return best;
+        }
+
+        /// <summary>
+        /// Evalúa y extrae los sucesores más adecuados siguiendo el algoritmo
+        /// Hill Climbing
+        /// </summary>
+        /// <param name="current">Nodo actual</param>
+        /// <param name="targetNode">Nodo objetivo</param>
+        /// <returns>Lista de vecinos caminables de Hill Climbing</returns>
+        private static List<Node> GetSuccessors(Node current, CellInfo targetNode, WorldInfo world)
+        {
+            CellInfo neighbour;
+            List<Node> list = new();
+
+            // Para cada posible sucesor del nodo actual
+            for (int i = 0; i < 4; i++)
+            {
+                Directions direction = GetDirection(i);
+                neighbour = GetNeighbour(current.cell, direction, world);
+                if (neighbour.Walkable)
+                {
+                    // Calcula f(n) = g(n) + h(n) reutilizando la fórmula del A*
+                    int g = current.g_cost + 1;
+                    int h = ManhattanDistance(neighbour.x, neighbour.y, targetNode.x, targetNode.y);
+                    int f = g + h;
+                    Node aux = new(neighbour, f)
+                    {
+                        // Añade el nodo actual como padre del sucesor
+                        predecessor = current,
+                        h_cost = h,
+                        g_cost = g
+                    };
+                    list.Add(aux);
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Recalcula el camino desde el objetivo al nodo inicial para que 
+        /// sea recorrido por el agente
+        /// </summary>
+        /// <param name="current">Nodo con la posición objetivo</param>
+        /// <param name="start">Nodo con la posición inicial</param>
+        /// <returns>Array con las posiciones a recorrer</returns>
+        private static CellInfo[] ReconstructPath(Node current, Node start)
+        {
+            List<CellInfo> path = new();
+            Node aux = current;
+
+            while (aux != null && aux != start)
+            {
+                path.Add(aux.cell);
+                aux = aux.predecessor;
+            }
+            path.Reverse();
+            return path.ToArray();
+        }
+
+        // Calcula la heurística h(n) 
+        public static int ManhattanDistance(int current_x, int current_y, int target_x, int target_y)
+        {
+            // Fórmula de la Distancia Manhattan: |x1 - x2| + |y1 - y2|
+            // Para entornos cuadriculados con movimiento en direcciones verticales y horizontales
+            return Math.Abs(current_x - target_x) + Math.Abs(current_y - target_y);
+        }
+
+        public static Directions GetDirection(int n)
+        {
+            return n switch
+            {
+                0 => Directions.Up,
+                1 => Directions.Right,
+                2 => Directions.Down,
+                3 => Directions.Left,
+                _ => Directions.None,
+            };
+        }
+        public static CellInfo GetNeighbour(CellInfo current, Directions direction, WorldInfo world)
+        {
+            CellInfo neighbour = direction switch
+            {
+                Directions.Up => world[current.x, current.y - 1],
+                Directions.Right => world[current.x + 1, current.y],
+                Directions.Down => world[current.x, current.y + 1],
+                Directions.Left => world[current.x - 1, current.y],
+                Directions.None => throw new NotImplementedException(),
+                _ => throw new NotImplementedException(),
+            };
+            return neighbour;
+        }
+    }
+}
+
