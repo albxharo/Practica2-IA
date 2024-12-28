@@ -6,24 +6,15 @@ using UnityEngine;
 namespace GrupoH { 
     public class Estado : MonoBehaviour
     {
-        private
-            bool enemigoHabitacion;
-            bool visible;
-            Type salud;
-            bool medPackCerca;
-
-        public 
-
-            // Start is called before the first frame update
-            void Start()
-            {
-        
-            }
-
-            // Update is called once per frame
-            void Update()
-            {
-        
-            }
+        public int Id;
+        public Vector2 PosicionEnemigo;
+        public bool[] Direcciones; //Almacenamos la caminabilidad hacia las cuatro direcciones (norte, sur, este y oeste)
+            
+        public Estado (int Id, Vector2 PosicionEnemigo, bool[] Direcciones)
+        {
+            this.Id = Id;
+            this.PosicionEnemigo = PosicionEnemigo;
+            this.Direcciones = Direcciones;
+        }
 }   }
 
