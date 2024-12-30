@@ -16,5 +16,6 @@ namespace GrupoH {
             this.PosicionEnemigo = PosicionEnemigo;
             this.Direcciones = Direcciones;
         }
-}   }
+    }   
+}
 

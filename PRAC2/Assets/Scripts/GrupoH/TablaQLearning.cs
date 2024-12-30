@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace GrupoH
 {
-    public class TablaQLearning 
+    public class TablaQLearning
     {
         private float[,] tablaQ; // Matriz de valores Q
         private int numAcciones; // Número de acciones (filas)
@@ -56,45 +56,6 @@ namespace GrupoH
             }
 
             return mejorAccion;
-        }
-
-        // Guardar la tabla Q en un archivo CSV
-        public void GuardarEnCSV(string rutaArchivo)
-        {
-            using (StreamWriter writer = new StreamWriter(rutaArchivo))
-            {
-                for (int i = 0; i < numAcciones; i++)
-                {
-                    string fila = "";
-                    for (int j = 0; j < numEstados; j++)
-                    {
-                        fila += tablaQ[i, j].ToString("F2") + (j == numEstados - 1 ? "" : ",");
-                    }
-                    writer.WriteLine(fila);
-                }
-            }
-            Debug.Log($"Tabla Q guardada en {rutaArchivo}");
-        }
-
-        // Cargar la tabla Q desde un archivo CSV
-        public void CargarDesdeCSV(string rutaArchivo)
-        {
-            if (!File.Exists(rutaArchivo))
-            {
-                Debug.LogError($"El archivo {rutaArchivo} no existe.");
-                return;
-            }
-
-            string[] lineas = File.ReadAllLines(rutaArchivo);
-            for (int i = 0; i < lineas.Length; i++)
-            {
-                string[] valores = lineas[i].Split(',');
-                for (int j = 0; j < valores.Length; j++)
-                {
-                    tablaQ[i, j] = float.Parse(valores[j]);
-                }
-            }
-            Debug.Log($"Tabla Q cargada desde {rutaArchivo}");
         }
     }
 }
