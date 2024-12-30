@@ -39,10 +39,10 @@ namespace GrupoH
 
             // Crear tabla Q
             int numAcciones = 4; // Norte, Sur, Este, Oeste
-            int numEstados = 16 * 9; // Ejemplo: total de estados posibles
+            int numEstados = 16 * 9; // Total de estados posibles
             tablaQ = new TablaQLearning(numAcciones, numEstados);
 
-            // Cargar tabla Q si existe
+            // Cargar tabla Q 
             CargarTablaQ();
 
             AgentPosition = mundo.RandomCell();
@@ -164,22 +164,31 @@ namespace GrupoH
 
         public void GuardarTablaQ()
         {
-            tablaQ.GuardarEnCSV(RUTA_CSV);
             Debug.Log("Tabla Q guardada en archivo CSV.");
-        }
+            try
+            {
+                using (StreamWriter writer = new StreamWriter(RUTA_CSV))
+                {
+                    // Escribir encabezados (opcional)
+                    writer.WriteLine("Estado,Accion,Q-Valor");
 
-        public void CargarTablaQ()
-        {
-            if (File.Exists(RUTA_CSV))
-            {
-                tablaQ.CargarDesdeCSV(RUTA_CSV);
-                Debug.Log("Tabla Q cargada desde archivo CSV.");
+                    // Recorrer todos los estados y acciones de la tabla Q
+                    for (int estado = 0; estado < tablaQ.numEstados; estado++)
+                    {
+                        for (int accion = 0; accion < tablaQ.numAcciones; accion++)
+                        {
+                            float qValor = tablaQ.ObtenerQ(accion, estado);
+                            writer.WriteLine($"{estado},{accion},{qValor}");
+                        }
+                    }
+                }
+                Debug.Log($"Tabla Q guardada exitosamente en {RUTA_CSV}");
             }
-            else
+            catch (Exception ex)
             {
-                Debug.LogWarning("No se encontró un archivo CSV para cargar la tabla Q.");
+                Debug.LogError($"Error al guardar la tabla Q en el archivo CSV: {ex.Message}");
             }
         }
-    }
+    
     }
 }

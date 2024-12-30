@@ -9,8 +9,8 @@ namespace GrupoH
     public class TablaQLearning
     {
         private float[,] tablaQ; // Matriz de valores Q
-        private int numAcciones; // Número de acciones (filas)
-        private int numEstados; // Número de estados (columnas)
+        public int numAcciones; // Número de acciones (filas)
+        public int numEstados; // Número de estados (columnas)
 
         public TablaQLearning(int numAcciones, int numEstados)
         {
