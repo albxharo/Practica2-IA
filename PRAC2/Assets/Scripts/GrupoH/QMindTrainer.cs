@@ -11,7 +11,7 @@ namespace GrupoH
     public class QMindTrainer : IQMindTrainer
     {
         private TablaQLearning tablaQ; // la tabla Q
-        private QMindTrainerParams parametros; // Parámetros de entrenamiento
+        public QMindTrainerParams parametros; // Parámetros de entrenamiento
         private WorldInfo mundo; // Información del mundo
         private INavigationAlgorithm algoritmoNavegacion; // Algoritmo de navegación para el enemigo
 
@@ -24,10 +24,11 @@ namespace GrupoH
         public CellInfo OtherPosition { get; private set; }
         public float Return { get; }
         public float ReturnAveraged { get; }
+
         public event EventHandler OnEpisodeStarted;
         public event EventHandler OnEpisodeFinished;
 
-        private const string RUTA_CSV = "Assets/Scripts/GrupoH/TablaQ.csv";
+        private const string RUTA_TABLA = "Assets/Scripts/GrupoH/TablaQ.csv";
         public void Initialize(QMindTrainerParams qMindTrainerParams, WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm)
         {
             Debug.Log("QMindTrainer: initialized");
@@ -43,10 +44,16 @@ namespace GrupoH
             tablaQ = new TablaQLearning(numAcciones, numEstados);
 
             // Cargar tabla Q 
-            CargarTablaQ();
+            if (File.Exists(RUTA_TABLA))
+            {
+                CargarTablaQ();
+            }
 
             AgentPosition = mundo.RandomCell();
             OtherPosition = mundo.RandomCell();
+            CurrentEpisode = 0;
+            CurrentStep = 0;
+
             OnEpisodeStarted?.Invoke(this, EventArgs.Empty);
         }
 
@@ -67,13 +74,13 @@ namespace GrupoH
                 ActualizarQ(accion, recompensa, nuevaPosicion);
             }
 
-            // Actualizar estado del juego
+            // Actualizar estado 
             posicionAnteriorAgente = AgentPosition;
             accionAnterior = accion;
             AgentPosition = nuevaPosicion;
 
             // Mover enemigo
-            OtherPosition = QMind.Utils.MoveOther(algoritmoNavegacion, OtherPosition, AgentPosition);
+            OtherPosition = GrupoH.Movimiento.MovimientoEnemigo(algoritmoNavegacion, OtherPosition, AgentPosition);
 
             // Verificar condiciones de finalización
             if (AgentPosition.Equals(OtherPosition) || CurrentStep >= parametros.maxSteps)
@@ -102,7 +109,7 @@ namespace GrupoH
         }
         private CellInfo EjecutarAccion(int accion)
         {
-            CellInfo nuevaPosicion = QMind.Utils.MoveAgent(accion, AgentPosition, mundo);
+            CellInfo nuevaPosicion = GrupoH.Movimiento.MovimientoAgente(accion, AgentPosition, mundo);
 
             if (!nuevaPosicion.Walkable)
             {
@@ -143,7 +150,7 @@ namespace GrupoH
 
         private int ObtenerEstado(CellInfo posicion)
         {
-            return posicion.x * mundo.WorldSize.x + posicion.y; // Ejemplo básico de identificación de estado
+            return posicion.x * mundo.WorldSize.x + posicion.y; // identificación de estado
         }
 
         private void ReiniciarEpisodio()
@@ -167,7 +174,7 @@ namespace GrupoH
             Debug.Log("Tabla Q guardada en archivo CSV.");
             try
             {
-                using (StreamWriter writer = new StreamWriter(RUTA_CSV))
+                using (StreamWriter writer = new StreamWriter(RUTA_TABLA))
                 {
                     // Escribir encabezados (opcional)
                     writer.WriteLine("Estado,Accion,Q-Valor");
@@ -182,13 +189,37 @@ namespace GrupoH
                         }
                     }
                 }
-                Debug.Log($"Tabla Q guardada exitosamente en {RUTA_CSV}");
+                Debug.Log($"Tabla Q guardada exitosamente en {RUTA_TABLA}");
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Error al guardar la tabla Q en el archivo CSV: {ex.Message}");
             }
         }
-    
+
+        public void CargarTablaQ()
+        {
+            try
+            {
+                using (StreamReader reader = new StreamReader(RUTA_TABLA))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        var parts = line.Split(',');
+                        int estado = int.Parse(parts[0]);
+                        int accion = int.Parse(parts[1]);
+                        float qValor = float.Parse(parts[2]);
+                        tablaQ.ActualizarQ(accion, estado, qValor);
+                    }
+                }
+                Debug.Log("Tabla Q cargada exitosamente.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
+            }
+        }
+
     }
 }

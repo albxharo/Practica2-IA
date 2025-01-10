@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 namespace GrupoH { 
-    public class Estado : MonoBehaviour
+    public class Estado 
     {
         public int Id;
         public Vector2 PosicionEnemigo;

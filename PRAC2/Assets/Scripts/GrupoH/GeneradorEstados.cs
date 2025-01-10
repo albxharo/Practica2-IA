@@ -6,7 +6,7 @@ namespace GrupoH
 {
     public class GeneradorEstados
     {
-        public List<Estado> Estados = new List<Estado>(); // Lista de todos los estados posibles
+        public List<Estado> Estados { get; } = new List<Estado>(); // Lista de todos los estados posibles
 
         public void GenerarEstados()
         {
@@ -44,16 +44,14 @@ namespace GrupoH
             for (int i = 0; i < 16; i++) 
             {
                 // Almacenamos los numeros en binario
-                bool[] accesibilidad = new bool[4];
-
+                combinaciones.Add(new bool[]
                 // Convertir el número a combinaciones de true/false directamente
-
-                accesibilidad[0] = (i % 2) == 1;         // Norte
-                accesibilidad[1] = ((i / 2) % 2) == 1;   // Este
-                accesibilidad[2] = ((i / 4) % 2) == 1;   // Sur
-                accesibilidad[3] = ((i / 8) % 2) == 1;   // Oeste
-
-                combinaciones.Add(accesibilidad);
+                {
+                    (i % 2) == 1,         // Norte
+                    ((i / 2) % 2) == 1,   // Este
+                    ((i / 4) % 2) == 1,   // Sur
+                    ((i / 8) % 2) == 1    // Oeste
+                });
             }
 
             return combinaciones;

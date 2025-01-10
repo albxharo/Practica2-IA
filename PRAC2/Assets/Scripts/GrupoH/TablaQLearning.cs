@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -19,11 +20,11 @@ namespace GrupoH
             tablaQ = new float[numAcciones, numEstados];
 
             // Inicializar la tabla Q con valores 0
-            for (int i = 0; i < numAcciones; i++)
+            for (int accion = 0; accion < numAcciones; accion++)
             {
-                for (int j = 0; j < numEstados; j++)
+                for (int estado = 0; estado < numEstados; estado++)
                 {
-                    tablaQ[i, j] = 0f;
+                    tablaQ[accion, estado] = 0f;
                 }
             }
         }
@@ -31,31 +32,58 @@ namespace GrupoH
         // Obtener el valor Q para una acción y un estado
         public float ObtenerQ(int accion, int estado)
         {
+            ValidarIndices(accion, estado);
             return tablaQ[accion, estado];
         }
 
         // Actualizar el valor Q para una acción y un estado
         public void ActualizarQ(int accion, int estado, float nuevoValor)
         {
+            ValidarIndices(accion, estado);
             tablaQ[accion, estado] = nuevoValor;
         }
 
         // Obtener la mejor acción para un estado
         public int ObtenerMejorAccion(int estado)
         {
+            ValidarEstado(estado);
+
             int mejorAccion = 0;
             float mejorQ = float.MinValue;
 
-            for (int i = 0; i < numAcciones; i++)
+            for (int accion = 0; accion < numAcciones; accion++)
             {
-                if (tablaQ[i, estado] > mejorQ)
+                if (tablaQ[accion, estado] > mejorQ)
                 {
-                    mejorQ = tablaQ[i, estado];
-                    mejorAccion = i;
+                    mejorQ = tablaQ[accion, estado];
+                    mejorAccion = accion;
                 }
             }
 
             return mejorAccion;
+        }
+
+        // Valida si los índices de acción y estado son válidos
+        private void ValidarIndices(int accion, int estado)
+        {
+            if (accion < 0 || accion >= numAcciones)
+            {
+                throw new ArgumentOutOfRangeException(nameof(accion), "Acción fuera de rango.");
+            }
+
+            if (estado < 0 || estado >= numEstados)
+            {
+                throw new ArgumentOutOfRangeException(nameof(estado), "Estado fuera de rango.");
+            }
+        }
+
+        // Valida si el índice de estado es válido
+        private void ValidarEstado(int estado)
+        {
+            if (estado < 0 || estado >= numEstados)
+            {
+                throw new ArgumentOutOfRangeException(nameof(estado), "Estado fuera de rango.");
+            }
         }
     }
 }
