@@ -1,114 +1,113 @@
-using System;
 using NavigationDJIA.World;
-using NavigationDJIA.Interfaces;
 using QMind.Interfaces;
+using System.IO;
+using System;
 using UnityEngine;
-using Components.QLearning;
-using Components;
-using NavigationDJIA.Algorithms.AStar;
+using System.Globalization;
 
 namespace GrupoH
 {
-    public class QMindTester : MonoBehaviour
+    public class QMindTester : IQMind
     {
-        public Movable agent;
-        public Movable oponente;
-        public float velocidad = 1.0f;
-        public string qMindClass;
-        public int escenarios = 10; // Número de escenarios a evaluar
+        private TablaQLearning tablaQ; // Tabla Q entrenada
+        private WorldInfo mundo; // Información del mundo
+        private int numAcciones = 4; // Norte, Sur, Este, Oeste
+        private int numEstados = 16 * 9; // Total de estados posibles
 
-        private IQMind qMind;
-        private WorldInfo mundo;
-        private CellInfo posicionAgente;
-        private CellInfo posicionOponente;
-
-        private int pasosTotales = 0;
-        private int capturas = 0;
-
-        void Start()
+        public void Initialize(WorldInfo worldInfo)
         {
-            mundo = WorldManager.Instance.WorldInfo;
+            Debug.Log("QMindTester: inicializando...");
 
-            // Inicializar la clase IQMind
-            Type qMindType = Type.GetType(qMindClass);
-            if (qMindType == null)
+            // Inicialización del mundo y tabla Q
+            mundo = worldInfo;
+            tablaQ = new TablaQLearning(numAcciones, numEstados);
+
+            // Cargar la tabla Q previamente entrenada
+            CargarTablaQ();
+
+            Debug.Log("QMindTester: inicialización completa.");
+        }
+
+        public CellInfo GetNextStep(CellInfo currentPosition, CellInfo otherPosition)
+        {
+            if (currentPosition == null || otherPosition == null)
             {
-                Debug.LogError($"Clase {qMindClass} no encontrada.");
-                enabled = false;
+                Debug.LogError("Las posiciones proporcionadas son nulas.");
+                return currentPosition; // Mantener la posición actual
+            }
+
+            // Calcular el estado actual
+            int estadoActual = ObtenerEstado(currentPosition, otherPosition);
+
+            // Seleccionar la mejor acción basada en la tabla Q
+            int mejorAccion = tablaQ.ObtenerMejorAccion(estadoActual);
+
+            // Mover el agente basado en la acción elegida
+            return Movimiento.MovimientoAgente(mejorAccion, currentPosition, mundo);
+        }
+
+        private int ObtenerEstado(CellInfo posicionAgente, CellInfo posicionEnemigo)
+        {
+            // Combina las posiciones del agente y enemigo para obtener el índice único de estado
+            int posicionRelativaX = posicionEnemigo.x - posicionAgente.x;
+            int posicionRelativaY = posicionEnemigo.y - posicionAgente.y;
+
+            // Normalizar las posiciones relativas dentro de [-1, 0, 1]
+            posicionRelativaX = Mathf.Clamp(posicionRelativaX, -1, 1);
+            posicionRelativaY = Mathf.Clamp(posicionRelativaY, -1, 1);
+
+            // Convertir las coordenadas relativas y direcciones caminables en un estado único
+            int estadoId = (posicionRelativaX + 1) * 3 + (posicionRelativaY + 1); // Ejemplo básico
+            return Mathf.Clamp(estadoId, 0, numEstados - 1); // Asegurar que esté dentro del rango
+        }
+
+        private void CargarTablaQ()
+        {
+            string rutaTabla = "Assets/Scripts/GrupoH/TablaQ.csv";
+            if (!File.Exists(rutaTabla))
+            {
+                Debug.LogError("No se encontró la tabla Q entrenada en la ruta especificada.");
                 return;
             }
 
-            qMind = (IQMind)Activator.CreateInstance(qMindType);
-            qMind.Initialize(mundo);
-
-            EvaluarAgente();
-        }
-
-        void EvaluarAgente()
-        {
-            for (int i = 0; i < escenarios; i++)
+            try
             {
-                Debug.Log($"Iniciando escenario {i + 1}/{escenarios}...");
-                SimularEscenario();
-            }
-
-            float promedioPasos = pasosTotales / (float)escenarios;
-            Debug.Log($"Promedio de pasos: {promedioPasos}");
-            Debug.Log($"Capturas totales: {capturas}");
-        }
-
-        void SimularEscenario()
-        {
-            posicionAgente = mundo.RandomCell();
-            posicionOponente = mundo.RandomCell();
-
-            agent.transform.position = mundo.ToWorldPosition(posicionAgente);
-            oponente.transform.position = mundo.ToWorldPosition(posicionOponente);
-
-            int pasos = 0;
-            bool capturado = false;
-
-            while (pasos < 1000) // Límite de pasos
-            {
-                if (agent.DestinationReached && oponente.DestinationReached)
+                using (StreamReader reader = new StreamReader(rutaTabla))
                 {
-                    // Movimiento del agente
-                    CellInfo nuevaPosicionAgente = qMind.GetNextStep(posicionAgente, posicionOponente);
-                    if (nuevaPosicionAgente != null)
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
                     {
-                        posicionAgente = nuevaPosicionAgente;
-                        agent.destination = mundo.ToWorldPosition(posicionAgente);
-                    }
+                        // Ignorar encabezados o líneas vacías
+                        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("Estado")) continue;
 
-                    // Movimiento del oponente
-                    CellInfo[] camino = new AStarNavigation().GetPath(posicionOponente, posicionAgente, 1);
-                    if (camino.Length > 0)
-                    {
-                        posicionOponente = camino[0];
-                        oponente.destination = mundo.ToWorldPosition(posicionOponente);
-                    }
+                        // Separar por comas
+                        var parts = line.Split(',');
+                        if (parts.Length != 3)
+                        {
+                            Debug.LogWarning($"Línea inválida: {line}. Formato esperado: estado,acción,qValor");
+                            continue;
+                        }
 
-                    // Verificar captura
-                    if (posicionAgente == posicionOponente)
-                    {
-                        capturas++;
-                        Debug.Log($"Agente capturado en {pasos} pasos.");
-                        capturado = true;
-                        break;
+                        // Validar y convertir datos
+                        if (int.TryParse(parts[0], out int estado) &&
+                            int.TryParse(parts[1], out int accion) &&
+                            float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float qValor))
+                        {
+                            tablaQ.ActualizarQ(accion, estado, qValor);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Error al procesar la línea: {line}. No se pudieron parsear los valores.");
+                        }
                     }
-
-                    pasos++;
                 }
+                Debug.Log("Tabla Q cargada exitosamente.");
             }
-
-            pasosTotales += pasos;
-
-            if (!capturado)
+            catch (Exception ex)
             {
-                Debug.Log($"Agente evitó al oponente durante {pasos} pasos.");
+                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
         }
+
     }
 }
-
-

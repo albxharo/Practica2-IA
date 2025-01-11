@@ -5,6 +5,8 @@ using QMind;
 using QMind.Interfaces;
 using UnityEngine;
 using System.IO;
+using System.Globalization;
+using Components.QLearning;
 
 namespace GrupoH
 {
@@ -14,6 +16,7 @@ namespace GrupoH
         public QMindTrainerParams parametros; // Parámetros de entrenamiento
         private WorldInfo mundo; // Información del mundo
         private INavigationAlgorithm algoritmoNavegacion; // Algoritmo de navegación para el enemigo
+        private float recompensaTotal; // Acumula la recompensa total del episodio actual
 
         private int accionAnterior;
         private CellInfo posicionAnteriorAgente;
@@ -22,8 +25,8 @@ namespace GrupoH
         public int CurrentStep { get; private set; }
         public CellInfo AgentPosition { get; private set; }
         public CellInfo OtherPosition { get; private set; }
-        public float Return { get; }
-        public float ReturnAveraged { get; }
+        public float Return => recompensaTotal; // Devuelve la recompensa total acumulada
+        public float ReturnAveraged { get; private set; } // Calcula el promedio en ReiniciarEpisodio
 
         public event EventHandler OnEpisodeStarted;
         public event EventHandler OnEpisodeFinished;
@@ -39,6 +42,8 @@ namespace GrupoH
 
             // Inicialización
             parametros = qMindTrainerParams;
+            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes);
+
             mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
 
@@ -55,36 +60,46 @@ namespace GrupoH
             OtherPosition = mundo.RandomCell();
             CurrentEpisode = 0;
             CurrentStep = 0;
+            ReturnAveraged = 0; 
 
             OnEpisodeStarted?.Invoke(this, EventArgs.Empty);
         }
 
+
+
         public void DoStep(bool train)
         {
-            // Selección de acción
-            int accion = SeleccionarAccion();
-            
-            // Realizar acción
+            // Obtener el estado actual
+            int estadoActual = ObtenerEstado(AgentPosition, OtherPosition);
+
+            // Seleccionar la acción (considera si está en modo entrenamiento o no)
+            int accion = SeleccionarAccion(estadoActual, train);
+
+            // Realizar la acción y obtener la nueva posición
             CellInfo nuevaPosicion = EjecutarAccion(accion);
-            
-            // Obtener recompensa
+
+            // Calcular la recompensa basada en la nueva posición
             float recompensa = CalcularRecompensa(nuevaPosicion);
-            
-            // Actualizar tabla Q (solo si está en modo entrenamiento)
+
+            // Acumular recompensa total
+            recompensaTotal += recompensa;
+
+            // Actualizar la tabla Q si está en modo entrenamiento
             if (train)
             {
-                ActualizarQ(accion, recompensa, nuevaPosicion);
+                int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition);
+                ActualizarQ(estadoActual, accion, recompensa, nuevoEstado);
             }
 
-            // Actualizar estado 
+            // Actualizar el estado del agente
             posicionAnteriorAgente = AgentPosition;
             accionAnterior = accion;
             AgentPosition = nuevaPosicion;
 
-            // Mover enemigo
+            // Mover al enemigo
             OtherPosition = GrupoH.Movimiento.MovimientoEnemigo(algoritmoNavegacion, OtherPosition, AgentPosition);
 
-            // Verificar condiciones de finalización
+            // Verificar si el episodio termina
             if (AgentPosition.Equals(OtherPosition) || CurrentStep >= parametros.maxSteps)
             {
                 OnEpisodeFinished?.Invoke(this, EventArgs.Empty);
@@ -94,21 +109,27 @@ namespace GrupoH
             {
                 CurrentStep++;
             }
+
+            // Depuración
+            Debug.Log($"Paso: {CurrentStep}, Recompensa: {recompensa}, Recompensa Total: {recompensaTotal}");
         }
-        private int SeleccionarAccion()
+
+
+        private int SeleccionarAccion(int estado, bool explorar)
         {
-            // Selección e-greedy
             float probabilidad = UnityEngine.Random.Range(0f, 1f);
-            if (probabilidad < parametros.epsilon)
+            if (explorar && probabilidad < parametros.epsilon)
             {
-                return UnityEngine.Random.Range(0, 4); // Acción aleatoria
+                // Acción aleatoria
+                return UnityEngine.Random.Range(0, 4);
             }
             else
             {
-                int estado = ObtenerEstado(AgentPosition);
-                return tablaQ.ObtenerMejorAccion(estado); // Mejor acción según tabla Q
+                // Mejor acción según tabla Q
+                return tablaQ.ObtenerMejorAccion(estado);
             }
         }
+
         private CellInfo EjecutarAccion(int accion)
         {
             CellInfo nuevaPosicion = GrupoH.Movimiento.MovimientoAgente(accion, AgentPosition, mundo);
@@ -122,45 +143,100 @@ namespace GrupoH
             return nuevaPosicion;
         }
 
-        private float CalcularRecompensa(CellInfo nuevaPosicion)
+        private float CalcularRecompensa(CellInfo celda)
         {
-            if (nuevaPosicion.Equals(OtherPosition))
+            // Constantes para las penalizaciones y recompensas
+            const float BAJA = 10f;
+            const float MEDIA = 50f;
+            const float ALTA = 100f;
+            const float CRITICA = 1000f;
+
+            float refuerzo = 0f;
+
+            // Caso crítico: el agente es atrapado por el oponente
+            if (celda.Equals(OtherPosition))
             {
-                return -100f; // Penalización alta si el enemigo atrapa al agente
+                refuerzo -= CRITICA; // Penalización máxima
+                return refuerzo;
             }
+
+            // Cálculo de las distancias Manhattan (actual y nueva)
             int distanciaActual = Mathf.Abs(AgentPosition.x - OtherPosition.x) +
                                   Mathf.Abs(AgentPosition.y - OtherPosition.y);
-            int nuevaDistancia = Mathf.Abs(nuevaPosicion.x - OtherPosition.x) +
-                                 Mathf.Abs(nuevaPosicion.y - OtherPosition.y);
+            int nuevaDistancia = Mathf.Abs(celda.x - OtherPosition.x) +
+                                 Mathf.Abs(celda.y - OtherPosition.y);
 
-            return nuevaDistancia > distanciaActual ? 10f : -1f; // Recompensa positiva si se aleja
+            // Evaluar el cambio de distancia
+            if (nuevaDistancia > distanciaActual)
+            {
+                // Recompensa base por alejarse
+                refuerzo += ALTA;
+
+                // Recompensa adicional si la distancia es significativamente grande
+                if (nuevaDistancia >= 10)
+                {
+                    refuerzo += MEDIA;
+                }
+            }
+            else
+            {
+                // Penalización base por acercarse
+                refuerzo -= BAJA;
+
+                // Penalización adicional si la distancia es peligrosamente baja
+                if (nuevaDistancia <= 4)
+                {
+                    refuerzo -= ALTA;
+                }
+            }
+
+            return refuerzo;
         }
 
-        private void ActualizarQ(int accion, float recompensa, CellInfo nuevaPosicion)
+
+
+        private void ActualizarQ(int estadoActual, int accion, float recompensa, int nuevoEstado)
         {
-            int estadoActual = ObtenerEstado(AgentPosition);
-            int nuevoEstado = ObtenerEstado(nuevaPosicion);
 
             float qActual = tablaQ.ObtenerQ(accion, estadoActual);
             float mejorQ = tablaQ.ObtenerMejorAccion(nuevoEstado);
 
-            // Fórmula de actualización de Q-Learning
+            // Fórmula de actualización Q-Learning
             float nuevoQ = qActual + parametros.alpha * (recompensa + parametros.gamma * mejorQ - qActual);
             tablaQ.ActualizarQ(accion, estadoActual, nuevoQ);
-        }
+            Debug.Log($"Estado: {estadoActual}, Acción: {accion}, Q antes: {qActual}, Q después: {nuevoQ}");
 
-        private int ObtenerEstado(CellInfo posicion)
+        }
+        private int ObtenerEstado(CellInfo agente, CellInfo oponente)
         {
-            return (int)((posicion.x * mundo.WorldSize.x + posicion.y) % numEstados); // identificación de estado
+            // Calcular la posición relativa del oponente respecto al agente
+            int deltaX = Mathf.Clamp(oponente.x - agente.x, -1, 1) + 1; // Rango [0, 2]
+            int deltaY = Mathf.Clamp(oponente.y - agente.y, -1, 1) + 1; // Rango [0, 2]
+            int posicionRelativa = deltaX * 3 + deltaY; // Combinar en un rango [0, 8]
 
+            // Identificar celda única del agente
+            int celdaAgente = agente.x * mundo.WorldSize.x + agente.y;
+
+            // Combinar la posición del agente con la posición relativa del oponente
+            return (celdaAgente * 9 + posicionRelativa) % numEstados;
         }
+
 
         private void ReiniciarEpisodio()
         {
-            AgentPosition = mundo.RandomCell();
-            OtherPosition = mundo.RandomCell();
+            // Calcular recompensa promedio al final del episodio
+            if (CurrentStep > 0)
+            {
+                ReturnAveraged = recompensaTotal / CurrentStep;
+            }
+            Debug.Log($"Episodio {CurrentEpisode} finalizado: Total Reward = {recompensaTotal}, Average Reward = {ReturnAveraged}");
+            // Reiniciar variables para el nuevo episodio
+            recompensaTotal = 0f; // Reiniciar acumulador
             CurrentStep = 0;
             CurrentEpisode++;
+
+            AgentPosition = mundo.RandomCell();
+            OtherPosition = mundo.RandomCell();
 
             // Guardar la tabla Q cada ciertos episodios
             if (CurrentEpisode % parametros.episodesBetweenSaves == 0)
@@ -169,7 +245,10 @@ namespace GrupoH
             }
 
             OnEpisodeStarted?.Invoke(this, EventArgs.Empty);
+            
+
         }
+
 
         public void GuardarTablaQ()
         {
@@ -187,7 +266,8 @@ namespace GrupoH
                         for (int accion = 0; accion < tablaQ.numAcciones; accion++)
                         {
                             float qValor = tablaQ.ObtenerQ(accion, estado);
-                            writer.WriteLine($"{estado},{accion},{qValor}");
+                            // Usar punto como separador decimal
+                            writer.WriteLine($"{estado},{accion},{qValor.ToString(CultureInfo.InvariantCulture)}");
                         }
                     }
                 }
@@ -198,6 +278,7 @@ namespace GrupoH
                 Debug.LogError($"Error al guardar la tabla Q en el archivo CSV: {ex.Message}");
             }
         }
+
 
         public void CargarTablaQ()
         {
@@ -221,6 +302,22 @@ namespace GrupoH
             {
                 //Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
+        }
+        private void OnGUI()
+        {
+            GUIStyle guiStyle = new GUIStyle(GUI.skin.label);
+            guiStyle.fontSize = 22;
+            guiStyle.fontStyle = FontStyle.Bold;
+            guiStyle.normal.textColor = Color.black;
+
+            // Mostrar el episodio y el paso actual
+            GUI.Label(new Rect(10, 10, 300, 30), $"Episode: {CurrentEpisode} [{CurrentStep}]", guiStyle);
+
+            // Mostrar recompensa promedio (ReturnAveraged)
+            GUI.Label(new Rect(10, 40, 300, 30), $"Averaged reward: {ReturnAveraged}", guiStyle);
+
+            // Mostrar recompensa total (Return)
+            GUI.Label(new Rect(10, 70, 300, 30), $"Total reward: {Return}", guiStyle);
         }
 
     }
