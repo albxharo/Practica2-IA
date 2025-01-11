@@ -1,3 +1,4 @@
+using System;
 using NavigationDJIA.Interfaces;
 using NavigationDJIA.World;
 using UnityEngine;
@@ -9,17 +10,52 @@ namespace GrupoH
         // Movimiento del enemigo hacia el agente
         public static CellInfo MovimientoEnemigo(INavigationAlgorithm algoritmo, CellInfo posicionEnemigo, CellInfo posicionAgente)
         {
-            // Obtener el camino del enemigo al agente
-            CellInfo[] camino = algoritmo.GetPath(posicionEnemigo, posicionAgente, 1);
-
-            // Retornar el próximo paso si existe
-            if (camino != null && camino.Length > 1)
+            try
             {
-                return camino[1]; // El primer paso después de la posición inicial
+                // Validar algoritmo
+                if (algoritmo == null)
+                {
+                    UnityEngine.Debug.LogError("El algoritmo de navegación es nulo.");
+                    return posicionEnemigo;
+                }
+
+                // Validar posiciones
+                if (posicionEnemigo == null)
+                {
+                    UnityEngine.Debug.LogError("La posición del enemigo es nula.");
+                    return posicionEnemigo;
+                }
+
+                if (posicionAgente == null)
+                {
+                    UnityEngine.Debug.LogError("La posición del agente es nula.");
+                    return posicionEnemigo;
+                }
+
+                // Obtener el camino del enemigo al agente
+                CellInfo[] camino = algoritmo.GetPath(posicionEnemigo, posicionAgente, maxDepth: 100);
+
+                // Validar el camino obtenido
+                if (camino != null && camino.Length > 0)
+                {
+                    return camino[0]; // El primer paso después de la posición inicial
+                }
+                else
+                {
+                    UnityEngine.Debug.LogWarning("No se pudo calcular un camino válido.");
+                }
+            }
+            catch (Exception ex)
+            {
+                //UnityEngine.Debug.LogError($"Error al calcular el camino: {ex.Message}");
+                //UnityEngine.Debug.LogError($"Pila de excepciones: {ex.StackTrace}");
             }
 
-            return posicionEnemigo; // Mantener la posición si no hay camino
+            // Mantener la posición si ocurre un error o no hay camino
+            return posicionEnemigo;
         }
+
+
 
 
         // Movimiento del agente basado en la acción elegida

@@ -29,6 +29,10 @@ namespace GrupoH
         public event EventHandler OnEpisodeFinished;
 
         private const string RUTA_TABLA = "Assets/Scripts/GrupoH/TablaQ.csv";
+
+        int numAcciones = 4; // Norte, Sur, Este, Oeste
+        int numEstados = 16 * 9; // Total de estados posibles
+
         public void Initialize(QMindTrainerParams qMindTrainerParams, WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm)
         {
             Debug.Log("QMindTrainer: initialized");
@@ -39,8 +43,6 @@ namespace GrupoH
             algoritmoNavegacion = navigationAlgorithm;
 
             // Crear tabla Q
-            int numAcciones = 4; // Norte, Sur, Este, Oeste
-            int numEstados = 16 * 9; // Total de estados posibles
             tablaQ = new TablaQLearning(numAcciones, numEstados);
 
             // Cargar tabla Q 
@@ -126,11 +128,10 @@ namespace GrupoH
             {
                 return -100f; // Penalización alta si el enemigo atrapa al agente
             }
-
-            float distanciaActual = Vector2.Distance(new Vector2(AgentPosition.x, AgentPosition.y),
-                                                     new Vector2(OtherPosition.x, OtherPosition.y));
-            float nuevaDistancia = Vector2.Distance(new Vector2(nuevaPosicion.x, nuevaPosicion.y),
-                                                    new Vector2(OtherPosition.x, OtherPosition.y));
+            int distanciaActual = Mathf.Abs(AgentPosition.x - OtherPosition.x) +
+                                  Mathf.Abs(AgentPosition.y - OtherPosition.y);
+            int nuevaDistancia = Mathf.Abs(nuevaPosicion.x - OtherPosition.x) +
+                                 Mathf.Abs(nuevaPosicion.y - OtherPosition.y);
 
             return nuevaDistancia > distanciaActual ? 10f : -1f; // Recompensa positiva si se aleja
         }
@@ -150,7 +151,8 @@ namespace GrupoH
 
         private int ObtenerEstado(CellInfo posicion)
         {
-            return posicion.x * mundo.WorldSize.x + posicion.y; // identificación de estado
+            return (int)((posicion.x * mundo.WorldSize.x + posicion.y) % numEstados); // identificación de estado
+
         }
 
         private void ReiniciarEpisodio()
@@ -217,7 +219,7 @@ namespace GrupoH
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
+                //Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
         }
 
