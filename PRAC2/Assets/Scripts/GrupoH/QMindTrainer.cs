@@ -25,7 +25,7 @@ namespace GrupoH
         public int CurrentStep { get; private set; }
         public CellInfo AgentPosition { get; private set; }
         public CellInfo OtherPosition { get; private set; }
-        public float Return => recompensaTotal; // Devuelve la recompensa total acumulada
+        public float Return => recompensaTotal ; // Devuelve la recompensa total acumulada
         public float ReturnAveraged { get; private set; } // Calcula el promedio en ReiniciarEpisodio
 
         public event EventHandler OnEpisodeStarted;
@@ -43,6 +43,7 @@ namespace GrupoH
             // Inicialización
             parametros = qMindTrainerParams;
             parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes);
+
 
             mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
@@ -83,6 +84,7 @@ namespace GrupoH
 
             // Acumular recompensa total
             recompensaTotal += recompensa;
+
 
             // Actualizar la tabla Q si está en modo entrenamiento
             if (train)
@@ -136,12 +138,30 @@ namespace GrupoH
 
             if (!nuevaPosicion.Walkable)
             {
-                Debug.LogWarning("Acción inválida. Penalizando.");
-                nuevaPosicion = AgentPosition; // Mantener la posición actual
+                Debug.LogWarning($"Movimiento inválido detectado. Acción: {accion}. Buscando alternativa...");
+
+                // Intentar todas las acciones en orden de prioridad
+                for (int nuevaAccion = 0; nuevaAccion < 4; nuevaAccion++)
+                {
+                    CellInfo posicionAlternativa = GrupoH.Movimiento.MovimientoAgente(nuevaAccion, AgentPosition, mundo);
+                    if (posicionAlternativa.Walkable)
+                    {
+                        Debug.Log($"Acción alternativa seleccionada: {nuevaAccion}");
+                        return posicionAlternativa;
+                    }
+                }
+
+                // Si ninguna acción es válida, penalizar quedarse en su lugar
+                recompensaTotal -= 50f; // Penalización por estar atrapado
+                return AgentPosition;
             }
 
             return nuevaPosicion;
         }
+
+
+
+
 
         private float CalcularRecompensa(CellInfo celda)
         {
@@ -159,13 +179,21 @@ namespace GrupoH
                 refuerzo -= CRITICA; // Penalización máxima
                 return refuerzo;
             }
-
+            /*if (celda.Equals(AgentPosition))
+            {
+                return -30f; // Penalización significativa por no moverse
+            }
+            
             // Cálculo de las distancias Manhattan (actual y nueva)
             int distanciaActual = Mathf.Abs(AgentPosition.x - OtherPosition.x) +
                                   Mathf.Abs(AgentPosition.y - OtherPosition.y);
             int nuevaDistancia = Mathf.Abs(celda.x - OtherPosition.x) +
                                  Mathf.Abs(celda.y - OtherPosition.y);
-
+            */
+            // Cálculo de las distancias Manhattan (actual y nueva)
+            float distanciaActual = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
+            float nuevaDistancia = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
+            
             // Evaluar el cambio de distancia
             if (nuevaDistancia > distanciaActual)
             {
@@ -221,7 +249,7 @@ namespace GrupoH
             return (celdaAgente * 9 + posicionRelativa) % numEstados;
         }
 
-
+        private float sumaDeRetornos = 0f; // Acumula los retornos de todos los episodios
         private void ReiniciarEpisodio()
         {
             // Calcular recompensa promedio al final del episodio
@@ -234,6 +262,11 @@ namespace GrupoH
             recompensaTotal = 0f; // Reiniciar acumulador
             CurrentStep = 0;
             CurrentEpisode++;
+
+            // Actualizar ReturnAveraged
+            sumaDeRetornos += Return;
+            ReturnAveraged = sumaDeRetornos / (CurrentEpisode + 1); // Promedio hasta el episodio actual
+
 
             AgentPosition = mundo.RandomCell();
             OtherPosition = mundo.RandomCell();
