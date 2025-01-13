@@ -42,7 +42,6 @@ namespace GrupoH
 
             // Inicialización
             parametros = qMindTrainerParams;
-            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes);
 
 
             mundo = worldInfo;
@@ -70,30 +69,31 @@ namespace GrupoH
 
         public void DoStep(bool train)
         {
-            // Obtener el estado actual
+            // Obtener el estado actual basado en la posición del agente y el enemigo
             int estadoActual = ObtenerEstado(AgentPosition, OtherPosition);
 
-            // Seleccionar la acción (considera si está en modo entrenamiento o no)
+            // Elegir la acción (considerando si está en modo de entrenamiento o no)
             int accion = SeleccionarAccion(estadoActual, train);
 
             // Realizar la acción y obtener la nueva posición
             CellInfo nuevaPosicion = EjecutarAccion(accion);
 
-            // Calcular la recompensa basada en la nueva posición
-            float recompensa = CalcularRecompensa(nuevaPosicion);
+            // Calcular el nuevo estado tras el movimiento
+            int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition);
 
-            // Acumular recompensa total
-            recompensaTotal += recompensa;
+            // Logs detallados para depuración
+            Debug.Log($"DoStep - Estado actual: {estadoActual}, Acción elegida: {accion}, Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y}), Nuevo estado: {nuevoEstado}");
 
-
-            // Actualizar la tabla Q si está en modo entrenamiento
+            // Calcular recompensa y actualizar tabla Q si está en modo entrenamiento
             if (train)
             {
-                int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition);
+                float recompensa = CalcularRecompensa(nuevaPosicion);
                 ActualizarQ(estadoActual, accion, recompensa, nuevoEstado);
+
+                Debug.Log($"DoStep - Recompensa obtenida: {recompensa}, Estado previo: {estadoActual}, Estado nuevo: {nuevoEstado}");
             }
 
-            // Actualizar el estado del agente
+            // Actualizar la posición del agente y del enemigo
             posicionAnteriorAgente = AgentPosition;
             accionAnterior = accion;
             AgentPosition = nuevaPosicion;
@@ -101,9 +101,10 @@ namespace GrupoH
             // Mover al enemigo
             OtherPosition = GrupoH.Movimiento.MovimientoEnemigo(algoritmoNavegacion, OtherPosition, AgentPosition);
 
-            // Verificar si el episodio termina
+            // Verificar si el episodio debe terminar
             if (AgentPosition.Equals(OtherPosition) || CurrentStep >= parametros.maxSteps)
             {
+                Debug.Log("DoStep - Episodio terminado");
                 OnEpisodeFinished?.Invoke(this, EventArgs.Empty);
                 ReiniciarEpisodio();
             }
@@ -111,26 +112,31 @@ namespace GrupoH
             {
                 CurrentStep++;
             }
-
-            // Depuración
-            Debug.Log($"Paso: {CurrentStep}, Recompensa: {recompensa}, Recompensa Total: {recompensaTotal}");
         }
+
 
 
         private int SeleccionarAccion(int estado, bool explorar)
         {
             float probabilidad = UnityEngine.Random.Range(0f, 1f);
+
             if (explorar && probabilidad < parametros.epsilon)
             {
                 // Acción aleatoria
-                return UnityEngine.Random.Range(0, 4);
+                int accionAleatoria = UnityEngine.Random.Range(0, 4);
+                Debug.Log($"SeleccionarAccion - Explorando. Acción aleatoria: {accionAleatoria}");
+                return accionAleatoria;
             }
             else
             {
                 // Mejor acción según tabla Q
-                return tablaQ.ObtenerMejorAccion(estado);
+                int mejorAccion = tablaQ.ObtenerMejorAccion(estado);
+                Debug.Log($"SeleccionarAccion - Explotando. Mejor acción: {mejorAccion} para estado: {estado}");
+                return mejorAccion;
             }
         }
+
+
 
         private CellInfo EjecutarAccion(int accion)
         {
@@ -138,24 +144,11 @@ namespace GrupoH
 
             if (!nuevaPosicion.Walkable)
             {
-                Debug.LogWarning($"Movimiento inválido detectado. Acción: {accion}. Buscando alternativa...");
-
-                // Intentar todas las acciones en orden de prioridad
-                for (int nuevaAccion = 0; nuevaAccion < 4; nuevaAccion++)
-                {
-                    CellInfo posicionAlternativa = GrupoH.Movimiento.MovimientoAgente(nuevaAccion, AgentPosition, mundo);
-                    if (posicionAlternativa.Walkable)
-                    {
-                        Debug.Log($"Acción alternativa seleccionada: {nuevaAccion}");
-                        return posicionAlternativa;
-                    }
-                }
-
-                // Si ninguna acción es válida, penalizar quedarse en su lugar
-                recompensaTotal -= 50f; // Penalización por estar atrapado
-                return AgentPosition;
+                Debug.LogWarning($"Movimiento inválido detectado. Acción: {accion}. Manteniendo posición...");
+                return AgentPosition; // Mantener posición si no es válida
             }
 
+            Debug.Log($"EjecutarAccion - Acción: {accion}, Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y})");
             return nuevaPosicion;
         }
 
@@ -163,63 +156,62 @@ namespace GrupoH
 
 
 
+
+
         private float CalcularRecompensa(CellInfo celda)
         {
-            // Constantes para las penalizaciones y recompensas
-            const float BAJA = 10f;
-            const float MEDIA = 50f;
-            const float ALTA = 100f;
-            const float CRITICA = 1000f;
+            // Constantes ajustadas para recompensas y penalizaciones
+            const float RECOMPENSA_BAJA = 10f;    // Recompensa por alejarse ligeramente
+            const float RECOMPENSA_MEDIA = 50f;   // Recompensa por una distancia significativa
+            const float RECOMPENSA_ALTA = 100f;   // Recompensa máxima (objetivo ideal)
+            const float PENALIZACION_BAJA = -10f; // Penalización por acercarse ligeramente
+            const float PENALIZACION_MEDIA = -50f; // Penalización por estar cerca
+            const float PENALIZACION_ALTA = -100f; // Penalización severa (ser atrapado)
 
-            float refuerzo = 0f;
+            float recompensa = 0f;
 
-            // Caso crítico: el agente es atrapado por el oponente
+            // Caso crítico: el agente es atrapado por el enemigo
             if (celda.Equals(OtherPosition))
             {
-                refuerzo -= CRITICA; // Penalización máxima
-                return refuerzo;
+                recompensa = PENALIZACION_ALTA;
+                Debug.Log("El agente fue atrapado por el enemigo. Penalización severa.");
+                return recompensa;
             }
-            /*if (celda.Equals(AgentPosition))
-            {
-                return -30f; // Penalización significativa por no moverse
-            }
-            
-            // Cálculo de las distancias Manhattan (actual y nueva)
-            int distanciaActual = Mathf.Abs(AgentPosition.x - OtherPosition.x) +
-                                  Mathf.Abs(AgentPosition.y - OtherPosition.y);
-            int nuevaDistancia = Mathf.Abs(celda.x - OtherPosition.x) +
-                                 Mathf.Abs(celda.y - OtherPosition.y);
-            */
-            // Cálculo de las distancias Manhattan (actual y nueva)
+
+            // Cálculo de distancias Manhattan (actual y nueva)
             float distanciaActual = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
             float nuevaDistancia = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
-            
+
             // Evaluar el cambio de distancia
             if (nuevaDistancia > distanciaActual)
             {
-                // Recompensa base por alejarse
-                refuerzo += ALTA;
-
-                // Recompensa adicional si la distancia es significativamente grande
+                // Alejarse del enemigo
+                recompensa += RECOMPENSA_BAJA; // Base
                 if (nuevaDistancia >= 10)
                 {
-                    refuerzo += MEDIA;
+                    recompensa += RECOMPENSA_MEDIA; // Recompensa adicional por gran distancia
                 }
             }
-            else
+            else if (nuevaDistancia < distanciaActual)
             {
-                // Penalización base por acercarse
-                refuerzo -= BAJA;
-
-                // Penalización adicional si la distancia es peligrosamente baja
+                // Acercarse al enemigo
+                recompensa += PENALIZACION_BAJA; // Penalización base
                 if (nuevaDistancia <= 4)
                 {
-                    refuerzo -= ALTA;
+                    recompensa += PENALIZACION_MEDIA; // Penalización adicional por cercanía peligrosa
                 }
             }
 
-            return refuerzo;
+            // Penalización por intentar una acción inválida
+            if (!celda.Walkable)
+            {
+                recompensa += PENALIZACION_MEDIA;
+                Debug.Log("Intento de moverse a una celda no válida. Penalización aplicada.");
+            }
+
+            return recompensa;
         }
+
 
 
 
@@ -246,41 +238,57 @@ namespace GrupoH
             int celdaAgente = agente.x * mundo.WorldSize.x + agente.y;
 
             // Combinar la posición del agente con la posición relativa del oponente
-            return (celdaAgente * 9 + posicionRelativa) % numEstados;
+            int estado = (celdaAgente * 9 + posicionRelativa) % numEstados;
+
+            // Añadir mensaje de depuración
+            Debug.Log($"ObtenerEstado - Agente: ({agente.x}, {agente.y}), Enemigo: ({oponente.x}, {oponente.y}), Estado: {estado}");
+
+            return estado;
         }
 
+
+
+
         private float sumaDeRetornos = 0f; // Acumula los retornos de todos los episodios
+        private int episodiosTotales = 0;  // Contador de episodios totales
+
         private void ReiniciarEpisodio()
         {
-            // Calcular recompensa promedio al final del episodio
-            if (CurrentStep > 0)
-            {
-                ReturnAveraged = recompensaTotal / CurrentStep;
-            }
-            Debug.Log($"Episodio {CurrentEpisode} finalizado: Total Reward = {recompensaTotal}, Average Reward = {ReturnAveraged}");
-            // Reiniciar variables para el nuevo episodio
-            recompensaTotal = 0f; // Reiniciar acumulador
+            // Incrementar el contador de episodios
+            episodiosTotales++;
+
+            // Cálculo del promedio usando media ponderada exponencial
+            ReturnAveraged = Mathf.Round((ReturnAveraged * 0.9f + Return * 0.1f) * 100) / 100;
+
+            // También puedes calcular el promedio acumulado (opcional)
+            sumaDeRetornos += Return;
+            float promedioGlobal = Mathf.Round((sumaDeRetornos / episodiosTotales) * 100) / 100;
+
+            Debug.Log($"Episodio {CurrentEpisode} finalizado: Total Reward = {Return}, Averaged Reward = {ReturnAveraged}, Promedio Global = {promedioGlobal}");
+
+            // Actualizar epsilon dinámicamente para reducir exploración con el tiempo
+            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes);
+            Debug.Log($"Epsilon actualizado: {parametros.epsilon}");
+
+            // Reiniciar variables del episodio
+            recompensaTotal = 0f; // Reiniciar acumulador de recompensa
             CurrentStep = 0;
             CurrentEpisode++;
 
-            // Actualizar ReturnAveraged
-            sumaDeRetornos += Return;
-            ReturnAveraged = sumaDeRetornos / (CurrentEpisode + 1); // Promedio hasta el episodio actual
-
-
+            // Actualizar posiciones iniciales del agente y el enemigo
             AgentPosition = mundo.RandomCell();
             OtherPosition = mundo.RandomCell();
 
-            // Guardar la tabla Q cada ciertos episodios
+            // Guardar la tabla Q periódicamente
             if (CurrentEpisode % parametros.episodesBetweenSaves == 0)
             {
                 GuardarTablaQ();
             }
 
+            // Disparar evento para iniciar un nuevo episodio
             OnEpisodeStarted?.Invoke(this, EventArgs.Empty);
-            
-
         }
+
 
 
         public void GuardarTablaQ()

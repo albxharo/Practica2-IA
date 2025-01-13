@@ -46,22 +46,29 @@ namespace GrupoH
         // Obtener la mejor acción para un estado
         public int ObtenerMejorAccion(int estado)
         {
-            ValidarEstado(estado);
-
-            int mejorAccion = 0;
             float mejorQ = float.MinValue;
+            List<int> mejoresAcciones = new List<int>();
 
+            // Encuentra las acciones con el mejor valor Q
             for (int accion = 0; accion < numAcciones; accion++)
             {
-                if (tablaQ[accion, estado] > mejorQ)
+                float qValor = ObtenerQ(accion, estado);
+                if (qValor > mejorQ)
                 {
-                    mejorQ = tablaQ[accion, estado];
-                    mejorAccion = accion;
+                    mejorQ = qValor;
+                    mejoresAcciones.Clear();
+                    mejoresAcciones.Add(accion);
+                }
+                else if (qValor == mejorQ)
+                {
+                    mejoresAcciones.Add(accion);
                 }
             }
 
-            return mejorAccion;
+            // Selecciona una acción aleatoria entre las mejores
+            return mejoresAcciones[UnityEngine.Random.Range(0, mejoresAcciones.Count)];
         }
+
 
         // Valida si los índices de acción y estado son válidos
         private void ValidarIndices(int accion, int estado)

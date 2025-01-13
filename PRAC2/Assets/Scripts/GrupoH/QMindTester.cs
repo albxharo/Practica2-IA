@@ -38,27 +38,49 @@ namespace GrupoH
 
             // Calcular el estado actual
             int estadoActual = ObtenerEstado(currentPosition, otherPosition);
+            Debug.Log($"Estado actual: {estadoActual}, Posición agente: ({currentPosition.x}, {currentPosition.y}), " +
+              $"Posición enemigo: ({otherPosition.x}, {otherPosition.y})");
+
+            // Mostrar los valores Q del estado actual
+            Debug.Log($"Valores Q del estado {estadoActual}: " +
+                      $"{tablaQ.ObtenerQ(0, estadoActual)}, {tablaQ.ObtenerQ(1, estadoActual)}, " +
+                      $"{tablaQ.ObtenerQ(2, estadoActual)}, {tablaQ.ObtenerQ(3, estadoActual)}");
 
             // Seleccionar la mejor acción basada en la tabla Q
             int mejorAccion = tablaQ.ObtenerMejorAccion(estadoActual);
+            Debug.Log($"Acción elegida: {mejorAccion}");
 
             // Mover el agente basado en la acción elegida
-            return Movimiento.MovimientoAgente(mejorAccion, currentPosition, mundo);
+            CellInfo nuevaPosicion = Movimiento.MovimientoAgente(mejorAccion, currentPosition, mundo);
+
+            // Validar si la nueva posición es válida
+            if (!nuevaPosicion.Walkable)
+            {
+                Debug.LogWarning($"Movimiento inválido detectado. Acción: {mejorAccion}. Manteniendo posición actual.");
+                return currentPosition;
+            }
+
+            Debug.Log($"Nueva posición del agente: ({nuevaPosicion.x}, {nuevaPosicion.y})");
+            return nuevaPosicion;
         }
 
         private int ObtenerEstado(CellInfo posicionAgente, CellInfo posicionEnemigo)
         {
-            // Combina las posiciones del agente y enemigo para obtener el índice único de estado
-            int posicionRelativaX = posicionEnemigo.x - posicionAgente.x;
-            int posicionRelativaY = posicionEnemigo.y - posicionAgente.y;
+            // Calcular la posición relativa del oponente respecto al agente
+            int deltaX = Mathf.Clamp(posicionEnemigo.x - posicionAgente.x, -1, 1) + 1; // Rango [0, 2]
+            int deltaY = Mathf.Clamp(posicionEnemigo.y - posicionAgente.y, -1, 1) + 1; // Rango [0, 2]
+            int posicionRelativa = deltaX * 3 + deltaY; // Combinar en un rango [0, 8]
 
-            // Normalizar las posiciones relativas dentro de [-1, 0, 1]
-            posicionRelativaX = Mathf.Clamp(posicionRelativaX, -1, 1);
-            posicionRelativaY = Mathf.Clamp(posicionRelativaY, -1, 1);
+            // Identificar celda única del agente
+            int celdaAgente = posicionAgente.x * mundo.WorldSize.x + posicionAgente.y;
 
-            // Convertir las coordenadas relativas y direcciones caminables en un estado único
-            int estadoId = (posicionRelativaX + 1) * 3 + (posicionRelativaY + 1); // Ejemplo básico
-            return Mathf.Clamp(estadoId, 0, numEstados - 1); // Asegurar que esté dentro del rango
+            // Combinar la posición del agente con la posición relativa del oponente
+            int estado = (celdaAgente * 9 + posicionRelativa) % numEstados;
+
+            // Depuración
+            Debug.Log($"ObtenerEstado - Agente: ({posicionAgente.x}, {posicionAgente.y}), Enemigo: ({posicionEnemigo.x}, {posicionEnemigo.y}), Estado: {estado}");
+
+            return estado;
         }
 
         private void CargarTablaQ()
@@ -108,6 +130,7 @@ namespace GrupoH
                 Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
         }
-
     }
 }
+
+
