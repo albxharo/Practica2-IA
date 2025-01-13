@@ -42,7 +42,7 @@ namespace GrupoH
 
             // Inicialización
             parametros = qMindTrainerParams;
-
+            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes); // Ajuste dinámico de epsilon
 
             mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
@@ -170,47 +170,77 @@ namespace GrupoH
 
             float recompensa = 0f;
 
-            // Caso crítico: el agente es atrapado por el enemigo
+            // Penalización alta si intenta moverse a una celda no válida
+            if (!celda.Walkable)
+            {
+                Debug.LogWarning("Movimiento hacia celda no válida. Aplicando penalización.");
+                return PENALIZACION_ALTA; // Penalización moderada por celda no válida
+            }
+
+            // Penalización severa si el agente es atrapado por el enemigo
             if (celda.Equals(OtherPosition))
             {
-                recompensa = PENALIZACION_ALTA;
                 Debug.Log("El agente fue atrapado por el enemigo. Penalización severa.");
-                return recompensa;
+                return PENALIZACION_ALTA; // Penalización máxima por ser atrapado
+            }
+            if (celda.Walkable && !celda.Equals(OtherPosition))
+            {
+                recompensa += 5f; // Pequeña recompensa por moverse hacia una celda válida
+            }
+
+            int distanciaAlBorde = Mathf.Min(celda.x, mundo.WorldSize.x - celda.x - 1,
+                                  celda.y, mundo.WorldSize.y - celda.y - 1);
+
+            if (distanciaAlBorde <= 1) // Muy cerca del borde
+            {
+                recompensa -= 50f; // Penalización por estar junto al borde
+            }
+
+            if (distanciaAlBorde >= 3) // Lejos del borde
+            {
+                recompensa += 10f; // Recompensa por mantenerse lejos del borde
+            }
+            if (celda.Equals(AgentPosition))
+            {
+                recompensa -= 20f; // Penalización por quedarse en el mismo lugar
+                Debug.Log("Penalización por quedarse quieto.");
+            }
+
+            float distanciaEnemigo = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
+
+            if (distanciaEnemigo <= 3) // Cercanía peligrosa
+            {
+                recompensa -= 30f; // Penalización por estar demasiado cerca del enemigo
+                Debug.Log("Penalización por estar cerca del enemigo.");
             }
 
             // Cálculo de distancias Manhattan (actual y nueva)
             float distanciaActual = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
             float nuevaDistancia = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
 
-            // Evaluar el cambio de distancia
+            // Recompensas y penalizaciones basadas en la distancia al enemigo
             if (nuevaDistancia > distanciaActual)
             {
-                // Alejarse del enemigo
-                recompensa += RECOMPENSA_BAJA; // Base
+                recompensa += 20f; // Recompensa base por alejarse
                 if (nuevaDistancia >= 10)
                 {
-                    recompensa += RECOMPENSA_MEDIA; // Recompensa adicional por gran distancia
+                    recompensa += 30f; // Recompensa adicional por gran distancia
                 }
             }
             else if (nuevaDistancia < distanciaActual)
             {
-                // Acercarse al enemigo
-                recompensa += PENALIZACION_BAJA; // Penalización base
-                if (nuevaDistancia <= 4)
+                recompensa -= 15f; // Penalización base por acercarse
+                if (nuevaDistancia <= 3)
                 {
-                    recompensa += PENALIZACION_MEDIA; // Penalización adicional por cercanía peligrosa
+                    recompensa -= 30f; // Penalización adicional por proximidad peligrosa
                 }
             }
 
-            // Penalización por intentar una acción inválida
-            if (!celda.Walkable)
-            {
-                recompensa += PENALIZACION_MEDIA;
-                Debug.Log("Intento de moverse a una celda no válida. Penalización aplicada.");
-            }
 
+            Debug.Log($"Recompensa calculada: {recompensa} (Distancia actual: {distanciaActual}, Nueva distancia: {nuevaDistancia})");
             return recompensa;
         }
+
 
 
 

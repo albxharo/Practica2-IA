@@ -39,30 +39,55 @@ namespace GrupoH
             // Calcular el estado actual
             int estadoActual = ObtenerEstado(currentPosition, otherPosition);
             Debug.Log($"Estado actual: {estadoActual}, Posición agente: ({currentPosition.x}, {currentPosition.y}), " +
-              $"Posición enemigo: ({otherPosition.x}, {otherPosition.y})");
+                      $"Posición enemigo: ({otherPosition.x}, {otherPosition.y})");
 
-            // Mostrar los valores Q del estado actual
-            Debug.Log($"Valores Q del estado {estadoActual}: " +
-                      $"{tablaQ.ObtenerQ(0, estadoActual)}, {tablaQ.ObtenerQ(1, estadoActual)}, " +
-                      $"{tablaQ.ObtenerQ(2, estadoActual)}, {tablaQ.ObtenerQ(3, estadoActual)}");
+            // Calcular la distancia Manhattan al enemigo
+            float distanciaEnemigo = currentPosition.Distance(otherPosition, CellInfo.DistanceType.Manhattan);
+            Debug.Log($"Distancia al enemigo: {distanciaEnemigo}");
+
+            // Forzar escape si el enemigo está demasiado cerca
+            if (distanciaEnemigo <= 3)
+            {
+                Debug.Log("El enemigo está cerca. Forzando movimiento de escape.");
+
+                // Buscar una acción que aumente la distancia al enemigo
+                int mejorAccionEscape = -1;
+                float mejorDistancia = float.MinValue;
+
+                for (int accion = 0; accion < numAcciones; accion++)
+                {
+                    CellInfo nuevaPosicion = Movimiento.MovimientoAgente(accion, currentPosition, mundo);
+
+                    if (nuevaPosicion.Walkable)
+                    {
+                        float nuevaDistancia = nuevaPosicion.Distance(otherPosition, CellInfo.DistanceType.Manhattan);
+                        if (nuevaDistancia > mejorDistancia)
+                        {
+                            mejorDistancia = nuevaDistancia;
+                            mejorAccionEscape = accion;
+                        }
+                    }
+                }
+
+                if (mejorAccionEscape != -1)
+                {
+                    Debug.Log($"Acción de escape elegida: {mejorAccionEscape}");
+                    return Movimiento.MovimientoAgente(mejorAccionEscape, currentPosition, mundo);
+                }
+            }
 
             // Seleccionar la mejor acción basada en la tabla Q
             int mejorAccion = tablaQ.ObtenerMejorAccion(estadoActual);
             Debug.Log($"Acción elegida: {mejorAccion}");
 
             // Mover el agente basado en la acción elegida
-            CellInfo nuevaPosicion = Movimiento.MovimientoAgente(mejorAccion, currentPosition, mundo);
+            CellInfo nuevaPosicionFinal = Movimiento.MovimientoAgente(mejorAccion, currentPosition, mundo);
 
-            // Validar si la nueva posición es válida
-            if (!nuevaPosicion.Walkable)
-            {
-                Debug.LogWarning($"Movimiento inválido detectado. Acción: {mejorAccion}. Manteniendo posición actual.");
-                return currentPosition;
-            }
-
-            Debug.Log($"Nueva posición del agente: ({nuevaPosicion.x}, {nuevaPosicion.y})");
-            return nuevaPosicion;
+            Debug.Log($"Nueva posición del agente: ({nuevaPosicionFinal.x}, {nuevaPosicionFinal.y})");
+            return nuevaPosicionFinal;
         }
+
+
 
         private int ObtenerEstado(CellInfo posicionAgente, CellInfo posicionEnemigo)
         {
