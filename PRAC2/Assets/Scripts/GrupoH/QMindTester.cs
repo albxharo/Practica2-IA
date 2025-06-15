@@ -12,7 +12,7 @@ namespace GrupoH
         private TablaQLearning tablaQ; // Tabla Q entrenada
         private WorldInfo mundo; // Información del mundo
         private int numAcciones = 4; // Norte, Sur, Este, Oeste
-        private int numEstados = 16 * 9; // Total de estados posibles
+        private int numEstados = 144; // Total de estados posibles
 
         public void Initialize(WorldInfo worldInfo)
         {
@@ -37,44 +37,13 @@ namespace GrupoH
             }
 
             // Calcular el estado actual
-            int estadoActual = ObtenerEstado(currentPosition, otherPosition);
+            int estadoActual = ObtenerEstado(currentPosition, otherPosition, mundo);
             Debug.Log($"Estado actual: {estadoActual}, Posición agente: ({currentPosition.x}, {currentPosition.y}), " +
                       $"Posición enemigo: ({otherPosition.x}, {otherPosition.y})");
 
             // Calcular la distancia Manhattan al enemigo
             float distanciaEnemigo = currentPosition.Distance(otherPosition, CellInfo.DistanceType.Manhattan);
             Debug.Log($"Distancia al enemigo: {distanciaEnemigo}");
-
-            // Forzar escape si el enemigo está demasiado cerca
-            if (distanciaEnemigo <= 3)
-            {
-                Debug.Log("El enemigo está cerca. Forzando movimiento de escape.");
-
-                // Buscar una acción que aumente la distancia al enemigo
-                int mejorAccionEscape = -1;
-                float mejorDistancia = float.MinValue;
-
-                for (int accion = 0; accion < numAcciones; accion++)
-                {
-                    CellInfo nuevaPosicion = Movimiento.MovimientoAgente(accion, currentPosition, mundo);
-
-                    if (nuevaPosicion.Walkable)
-                    {
-                        float nuevaDistancia = nuevaPosicion.Distance(otherPosition, CellInfo.DistanceType.Manhattan);
-                        if (nuevaDistancia > mejorDistancia)
-                        {
-                            mejorDistancia = nuevaDistancia;
-                            mejorAccionEscape = accion;
-                        }
-                    }
-                }
-
-                if (mejorAccionEscape != -1)
-                {
-                    Debug.Log($"Acción de escape elegida: {mejorAccionEscape}");
-                    return Movimiento.MovimientoAgente(mejorAccionEscape, currentPosition, mundo);
-                }
-            }
 
             // Seleccionar la mejor acción basada en la tabla Q
             int mejorAccion = tablaQ.ObtenerMejorAccion(estadoActual);
@@ -155,6 +124,28 @@ namespace GrupoH
                 Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
         }
+
+        private int ObtenerEstado(CellInfo agente, CellInfo enemigo, WorldInfo mundo)
+        {
+            int deltaX = Mathf.Clamp(enemigo.x - agente.x, -1, 1) + 1;
+            int deltaY = Mathf.Clamp(enemigo.y - agente.y, -1, 1) + 1;
+            int posicionRelativa = deltaX * 3 + deltaY;
+
+            bool[] direcciones = new bool[4];
+            direcciones[0] = agente.y + 1 < mundo.WorldSize.y && mundo[agente.x, agente.y + 1].Walkable;
+            direcciones[1] = agente.x + 1 < mundo.WorldSize.x && mundo[agente.x + 1, agente.y].Walkable;
+            direcciones[2] = agente.y - 1 >= 0 && mundo[agente.x, agente.y - 1].Walkable;
+            direcciones[3] = agente.x - 1 >= 0 && mundo[agente.x - 1, agente.y].Walkable;
+
+            int codAccesibilidad = 0;
+            for (int i = 0; i < 4; i++)
+                if (direcciones[i]) codAccesibilidad |= (1 << i);
+
+            int estado = posicionRelativa * 16 + codAccesibilidad;
+            Debug.Log($"ObtenerEstado - Relación enemigo: {posicionRelativa}, Caminabilidad: {codAccesibilidad}, Estado: {estado}");
+            return estado;
+        }
+
     }
 }
 

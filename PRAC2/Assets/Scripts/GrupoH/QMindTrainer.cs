@@ -34,15 +34,22 @@ namespace GrupoH
         private const string RUTA_TABLA = "Assets/Scripts/GrupoH/TablaQ.csv";
 
         int numAcciones = 4; // Norte, Sur, Este, Oeste
-        int numEstados = 16 * 9; // Total de estados posibles
+        int numEstados = 144; // Total de estados posibles
 
         public void Initialize(QMindTrainerParams qMindTrainerParams, WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm)
         {
             Debug.Log("QMindTrainer: initialized");
-
+            Time.timeScale = 5f;
             // Inicialización
             parametros = qMindTrainerParams;
-            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes); // Ajuste dinámico de epsilon
+            // Decrecimiento de epsilon
+            float t = (float)CurrentEpisode / parametros.episodes;
+
+            if (t < 0.8f)
+            {
+                parametros.epsilon = Mathf.Lerp(0.7f, 0.3f, t / 0.8f); // Episodios 0-80%: de 0.7 a 0.3
+            }
+
 
             mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
@@ -70,7 +77,7 @@ namespace GrupoH
         public void DoStep(bool train)
         {
             // Obtener el estado actual basado en la posición del agente y el enemigo
-            int estadoActual = ObtenerEstado(AgentPosition, OtherPosition);
+            int estadoActual = ObtenerEstado(AgentPosition, OtherPosition, mundo);
 
             // Elegir la acción (considerando si está en modo de entrenamiento o no)
             int accion = SeleccionarAccion(estadoActual, train);
@@ -79,7 +86,7 @@ namespace GrupoH
             CellInfo nuevaPosicion = EjecutarAccion(accion);
 
             // Calcular el nuevo estado tras el movimiento
-            int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition);
+            int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition, mundo);
 
             // Logs detallados para depuración
             Debug.Log($"DoStep - Estado actual: {estadoActual}, Acción elegida: {accion}, Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y}), Nuevo estado: {nuevoEstado}");
@@ -88,10 +95,10 @@ namespace GrupoH
             if (train)
             {
                 float recompensa = CalcularRecompensa(nuevaPosicion);
+                recompensaTotal += recompensa; 
                 ActualizarQ(estadoActual, accion, recompensa, nuevoEstado);
-
-                Debug.Log($"DoStep - Recompensa obtenida: {recompensa}, Estado previo: {estadoActual}, Estado nuevo: {nuevoEstado}");
             }
+
 
             // Actualizar la posición del agente y del enemigo
             posicionAnteriorAgente = AgentPosition;
@@ -114,6 +121,30 @@ namespace GrupoH
             }
         }
 
+        private int ObtenerEstado(CellInfo agente, CellInfo enemigo, WorldInfo mundo)
+        {
+            // Posición relativa del enemigo
+            int deltaX = Mathf.Clamp(enemigo.x - agente.x, -1, 1) + 1; // [0,2]
+            int deltaY = Mathf.Clamp(enemigo.y - agente.y, -1, 1) + 1; // [0,2]
+            int posicionRelativa = deltaX * 3 + deltaY; // [0,8]
+
+            // Caminabilidad del agente (N,E,S,O)
+            bool[] direcciones = new bool[4];
+            direcciones[0] = agente.y + 1 < mundo.WorldSize.y && mundo[agente.x, agente.y + 1].Walkable; // Norte
+            direcciones[1] = agente.x + 1 < mundo.WorldSize.x && mundo[agente.x + 1, agente.y].Walkable; // Este
+            direcciones[2] = agente.y - 1 >= 0 && mundo[agente.x, agente.y - 1].Walkable; // Sur
+            direcciones[3] = agente.x - 1 >= 0 && mundo[agente.x - 1, agente.y].Walkable; // Oeste
+
+            // Codificar la caminabilidad como un número binario
+            int codAccesibilidad = 0;
+            for (int i = 0; i < 4; i++)
+                if (direcciones[i]) codAccesibilidad |= (1 << i); // Suma potencias de 2
+
+            int estado = posicionRelativa * 16 + codAccesibilidad;
+
+            Debug.Log($"ObtenerEstado - Relación enemigo: {posicionRelativa}, Caminabilidad: {codAccesibilidad}, Estado: {estado}");
+            return estado;
+        }
 
 
         private int SeleccionarAccion(int estado, bool explorar)
@@ -153,95 +184,19 @@ namespace GrupoH
         }
 
 
-
-
-
-
-
         private float CalcularRecompensa(CellInfo celda)
         {
-            // Constantes ajustadas para recompensas y penalizaciones
-            const float RECOMPENSA_BAJA = 10f;    // Recompensa por alejarse ligeramente
-            const float RECOMPENSA_MEDIA = 50f;   // Recompensa por una distancia significativa
-            const float RECOMPENSA_ALTA = 100f;   // Recompensa máxima (objetivo ideal)
-            const float PENALIZACION_BAJA = -10f; // Penalización por acercarse ligeramente
-            const float PENALIZACION_MEDIA = -50f; // Penalización por estar cerca
-            const float PENALIZACION_ALTA = -100f; // Penalización severa (ser atrapado)
+            const float RECOMPENSA_POR_SOBREVIVIR = 1f;
+            const float PENALIZACION_POR_MUERTE = -100f;
 
-            float recompensa = 0f;
-
-            // Penalización alta si intenta moverse a una celda no válida
-            if (!celda.Walkable)
-            {
-                Debug.LogWarning("Movimiento hacia celda no válida. Aplicando penalización.");
-                return PENALIZACION_ALTA; // Penalización moderada por celda no válida
-            }
-
-            // Penalización severa si el agente es atrapado por el enemigo
             if (celda.Equals(OtherPosition))
             {
-                Debug.Log("El agente fue atrapado por el enemigo. Penalización severa.");
-                return PENALIZACION_ALTA; // Penalización máxima por ser atrapado
-            }
-            if (celda.Walkable && !celda.Equals(OtherPosition))
-            {
-                recompensa += 5f; // Pequeña recompensa por moverse hacia una celda válida
+                Debug.Log("Agente atrapado. Penalización.");
+                return PENALIZACION_POR_MUERTE;
             }
 
-            int distanciaAlBorde = Mathf.Min(celda.x, mundo.WorldSize.x - celda.x - 1,
-                                  celda.y, mundo.WorldSize.y - celda.y - 1);
-
-            if (distanciaAlBorde <= 1) // Muy cerca del borde
-            {
-                recompensa -= 50f; // Penalización por estar junto al borde
-            }
-
-            if (distanciaAlBorde >= 3) // Lejos del borde
-            {
-                recompensa += 10f; // Recompensa por mantenerse lejos del borde
-            }
-            if (celda.Equals(AgentPosition))
-            {
-                recompensa -= 20f; // Penalización por quedarse en el mismo lugar
-                Debug.Log("Penalización por quedarse quieto.");
-            }
-
-            float distanciaEnemigo = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
-
-            if (distanciaEnemigo <= 3) // Cercanía peligrosa
-            {
-                recompensa -= 30f; // Penalización por estar demasiado cerca del enemigo
-                Debug.Log("Penalización por estar cerca del enemigo.");
-            }
-
-            // Cálculo de distancias Manhattan (actual y nueva)
-            float distanciaActual = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
-            float nuevaDistancia = celda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
-
-            // Recompensas y penalizaciones basadas en la distancia al enemigo
-            if (nuevaDistancia > distanciaActual)
-            {
-                recompensa += 20f; // Recompensa base por alejarse
-                if (nuevaDistancia >= 10)
-                {
-                    recompensa += 30f; // Recompensa adicional por gran distancia
-                }
-            }
-            else if (nuevaDistancia < distanciaActual)
-            {
-                recompensa -= 15f; // Penalización base por acercarse
-                if (nuevaDistancia <= 3)
-                {
-                    recompensa -= 30f; // Penalización adicional por proximidad peligrosa
-                }
-            }
-
-
-            Debug.Log($"Recompensa calculada: {recompensa} (Distancia actual: {distanciaActual}, Nueva distancia: {nuevaDistancia})");
-            return recompensa;
+            return RECOMPENSA_POR_SOBREVIVIR;
         }
-
-
 
 
 
@@ -297,7 +252,13 @@ namespace GrupoH
             Debug.Log($"Episodio {CurrentEpisode} finalizado: Total Reward = {Return}, Averaged Reward = {ReturnAveraged}, Promedio Global = {promedioGlobal}");
 
             // Actualizar epsilon dinámicamente para reducir exploración con el tiempo
-            parametros.epsilon = Mathf.Lerp(1f, 0.1f, (float)CurrentEpisode / parametros.episodes);
+            float t = (float)CurrentEpisode / parametros.episodes;
+
+            if (t < 0.8f)
+            {
+                parametros.epsilon = Mathf.Lerp(0.7f, 0.3f, t / 0.8f); // Episodios 0-80%: de 0.7 a 0.3
+            }
+
             Debug.Log($"Epsilon actualizado: {parametros.epsilon}");
 
             // Reiniciar variables del episodio
@@ -317,6 +278,18 @@ namespace GrupoH
 
             // Disparar evento para iniciar un nuevo episodio
             OnEpisodeStarted?.Invoke(this, EventArgs.Empty);
+
+            if (CurrentEpisode % 100 == 0)
+            {
+                int estadoEjemplo = UnityEngine.Random.Range(0, tablaQ.numEstados);
+                string log = $"[DEBUG Q] Estado {estadoEjemplo}: ";
+                for (int a = 0; a < tablaQ.numAcciones; a++)
+                {
+                    log += $"A{a}={tablaQ.ObtenerQ(a, estadoEjemplo):F2} ";
+                }
+                Debug.Log(log);
+            }
+
         }
 
 
@@ -343,6 +316,8 @@ namespace GrupoH
                     }
                 }
                 Debug.Log($"Tabla Q guardada exitosamente en {RUTA_TABLA}");
+                Debug.Log($"[CargarTablaQ] Total de entradas cargadas: {tablaQ.numEstados * tablaQ.numAcciones}");
+
             }
             catch (Exception ex)
             {
