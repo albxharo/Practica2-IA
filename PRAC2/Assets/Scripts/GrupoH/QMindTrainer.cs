@@ -42,26 +42,22 @@ namespace GrupoH
             Time.timeScale = 5f;
             // Inicialización
             parametros = qMindTrainerParams;
-            // Decrecimiento de epsilon
-            float t = (float)CurrentEpisode / parametros.episodes;
 
-            if (t < 0.8f)
-            {
-                parametros.epsilon = Mathf.Lerp(0.7f, 0.3f, t / 0.8f); // Episodios 0-80%: de 0.7 a 0.3
-            }
-
-
-            mundo = worldInfo;
+           mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
 
-            // Crear tabla Q
-            tablaQ = new TablaQLearning(numAcciones, numEstados);
-
-            // Cargar tabla Q 
             if (File.Exists(RUTA_TABLA))
             {
+                tablaQ = new TablaQLearning(numAcciones, numEstados);
                 CargarTablaQ();
+                Debug.Log("Tabla Q cargada correctamente.");
             }
+            else
+            {
+                tablaQ = new TablaQLearning(numAcciones, numEstados);
+                Debug.Log("Se ha creado una nueva tabla Q.");
+            }
+
 
             AgentPosition = mundo.RandomCell();
             OtherPosition = mundo.RandomCell();
@@ -95,7 +91,7 @@ namespace GrupoH
             if (train)
             {
                 float recompensa = CalcularRecompensa(nuevaPosicion);
-                recompensaTotal += recompensa; 
+                recompensaTotal += recompensa;
                 ActualizarQ(estadoActual, accion, recompensa, nuevoEstado);
             }
 
@@ -115,10 +111,20 @@ namespace GrupoH
                 OnEpisodeFinished?.Invoke(this, EventArgs.Empty);
                 ReiniciarEpisodio();
             }
+            float nuevaDistancia = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
+            if (nuevaDistancia >= 10)
+            {
+                Debug.Log("Agente se ha alejado lo suficiente. Fin del episodio.");
+                OnEpisodeFinished?.Invoke(this, EventArgs.Empty);
+                ReiniciarEpisodio();
+                return;
+            }
             else
             {
                 CurrentStep++;
             }
+            Debug.Log($" De {AgentPosition} -> {nuevaPosicion} | Enemigo en {OtherPosition} | Distancia: {nuevaPosicion.Distance(OtherPosition, CellInfo.DistanceType.Manhattan)}");
+
         }
 
         private int ObtenerEstado(CellInfo agente, CellInfo enemigo, WorldInfo mundo)
@@ -184,19 +190,27 @@ namespace GrupoH
         }
 
 
-        private float CalcularRecompensa(CellInfo celda)
+        private float CalcularRecompensa(CellInfo nuevaCelda)
         {
-            const float RECOMPENSA_POR_SOBREVIVIR = 1f;
-            const float PENALIZACION_POR_MUERTE = -100f;
+            float distanciaActual = AgentPosition.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
+            float nuevaDistancia = nuevaCelda.Distance(OtherPosition, CellInfo.DistanceType.Manhattan);
 
-            if (celda.Equals(OtherPosition))
-            {
-                Debug.Log("Agente atrapado. Penalización.");
-                return PENALIZACION_POR_MUERTE;
-            }
+            if (!nuevaCelda.Walkable)
+                return -10f;
 
-            return RECOMPENSA_POR_SOBREVIVIR;
+            if (nuevaCelda.Equals(OtherPosition))
+                return -100f;
+
+            if (nuevaDistancia > distanciaActual)
+                return 5f;
+
+            if (nuevaDistancia < distanciaActual)
+                return -5f;
+
+            return -1f;
         }
+
+
 
 
 
