@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using NavigationDJIA.World;
 using UnityEngine;
@@ -10,23 +11,87 @@ namespace GrupoH
     public class TablaQLearning
     {
         private float[,] tablaQ; // Matriz de valores Q
-        public int numAcciones; // Número de acciones (filas)
-        public int numEstados; // Número de estados (columnas)
+        public int numAcciones = 4; // Número de acciones (filas): norte,sur,este y oeste
+        public int numEstados =144; // Número de estados (columnas)
 
-        public TablaQLearning(int numAcciones, int numEstados)
+        public TablaQLearning()
         {
-            this.numAcciones = numAcciones;
-            this.numEstados = numEstados;
             tablaQ = new float[numAcciones, numEstados];
 
-            // Inicializar la tabla Q con valores 0
+            // Inicializar la tabla Q con valores -1000
             for (int accion = 0; accion < numAcciones; accion++)
             {
                 for (int estado = 0; estado < numEstados; estado++)
                 {
-                    tablaQ[accion, estado] = 0f;
+                    tablaQ[accion, estado] = -1000f;
                 }
             }
+        }
+        
+        public TablaQLearning(string rutaTabla)
+        {
+            if (!File.Exists(rutaTabla))
+            {
+                Debug.LogError("No se encontró la tabla Q entrenada en la ruta especificada.");
+                return;
+            }
+            tablaQ = new float[numAcciones, numEstados];
+
+            //try
+            //{
+            using (StreamReader reader = new StreamReader(rutaTabla))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        // Ignorar encabezados o líneas vacías
+                        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("Estado")) continue;
+
+                        // Separar por comas
+                        var parts = line.Split(',');
+                        if (parts.Length != 3)
+                        {
+                            Debug.LogWarning($"Línea inválida: {line}. Formato esperado: estado,acción,qValor");
+                            continue;
+                        }
+
+                        // Validar y convertir datos
+                        if (int.TryParse(parts[0], out int estado) &&
+                            int.TryParse(parts[1], out int accion) &&
+                            float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float qValor))
+                        {
+                            ActualizarQ(accion, estado, qValor);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Error al procesar la línea: {line}. No se pudieron parsear los valores.");
+                        }
+                    }
+                }
+                Debug.Log("Tabla Q cargada exitosamente.");
+            //}
+           /* catch (Exception ex)
+            {
+                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
+            }*/
+        }
+
+
+        public void CalcularQ(int estadoActual, int accion, float recompensa, int nuevoEstado, float alpha, float gamma)
+        {
+            if (tablaQ[accion,estadoActual] == -1000)
+            {
+                tablaQ[accion,estadoActual] = 0;
+            }
+
+            float qActual = ObtenerQ(accion, estadoActual);
+            float mejorQ = ObtenerMejorAccion(nuevoEstado);
+
+            // Fórmula de actualización Q-Learning
+            float nuevoQ = qActual + alpha * (recompensa + gamma * mejorQ - qActual);
+            ActualizarQ(accion, estadoActual, nuevoQ);
+            Debug.Log($"Estado: {estadoActual}, Acción: {accion}, Q antes: {qActual}, Q después: {nuevoQ}");
+
         }
 
         // Obtener el valor Q para una acción y un estado

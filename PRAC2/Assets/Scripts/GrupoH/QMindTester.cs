@@ -11,8 +11,7 @@ namespace GrupoH
     {
         private TablaQLearning tablaQ; // Tabla Q entrenada
         private WorldInfo mundo; // Información del mundo
-        private int numAcciones = 4; // Norte, Sur, Este, Oeste
-        private int numEstados = 144; // Total de estados posibles
+
 
         public void Initialize(WorldInfo worldInfo)
         {
@@ -20,7 +19,7 @@ namespace GrupoH
 
             // Inicialización del mundo y tabla Q
             mundo = worldInfo;
-            tablaQ = new TablaQLearning(numAcciones, numEstados);
+            tablaQ = new TablaQLearning();
 
             // Cargar la tabla Q previamente entrenada
             CargarTablaQ();
@@ -56,26 +55,6 @@ namespace GrupoH
             return nuevaPosicionFinal;
         }
 
-
-
-        private int ObtenerEstado(CellInfo posicionAgente, CellInfo posicionEnemigo)
-        {
-            // Calcular la posición relativa del oponente respecto al agente
-            int deltaX = Mathf.Clamp(posicionEnemigo.x - posicionAgente.x, -1, 1) + 1; // Rango [0, 2]
-            int deltaY = Mathf.Clamp(posicionEnemigo.y - posicionAgente.y, -1, 1) + 1; // Rango [0, 2]
-            int posicionRelativa = deltaX * 3 + deltaY; // Combinar en un rango [0, 8]
-
-            // Identificar celda única del agente
-            int celdaAgente = posicionAgente.x * mundo.WorldSize.x + posicionAgente.y;
-
-            // Combinar la posición del agente con la posición relativa del oponente
-            int estado = (celdaAgente * 9 + posicionRelativa) % numEstados;
-
-            // Depuración
-            Debug.Log($"ObtenerEstado - Agente: ({posicionAgente.x}, {posicionAgente.y}), Enemigo: ({posicionEnemigo.x}, {posicionEnemigo.y}), Estado: {estado}");
-
-            return estado;
-        }
 
         private void CargarTablaQ()
         {

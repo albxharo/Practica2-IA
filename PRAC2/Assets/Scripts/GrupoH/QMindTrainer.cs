@@ -31,30 +31,28 @@ namespace GrupoH
         public event EventHandler OnEpisodeStarted;
         public event EventHandler OnEpisodeFinished;
 
-        private const string RUTA_TABLA = "Assets/Scripts/GrupoH/TablaQ.csv";
+        public const string RUTA_TABLA = "Assets/Scripts/GrupoH/TablaQ.csv";
 
-        int numAcciones = 4; // Norte, Sur, Este, Oeste
-        int numEstados = 144; // Total de estados posibles
 
         public void Initialize(QMindTrainerParams qMindTrainerParams, WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm)
         {
             Debug.Log("QMindTrainer: initialized");
-            Time.timeScale = 5f;
+            //Time.timeScale = 5f;
             // Inicialización
             parametros = qMindTrainerParams;
 
-           mundo = worldInfo;
+            mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
 
             if (File.Exists(RUTA_TABLA))
             {
-                tablaQ = new TablaQLearning(numAcciones, numEstados);
-                CargarTablaQ();
+                tablaQ = new TablaQLearning(RUTA_TABLA);
+                //CargarTablaQ();
                 Debug.Log("Tabla Q cargada correctamente.");
             }
             else
             {
-                tablaQ = new TablaQLearning(numAcciones, numEstados);
+                tablaQ = new TablaQLearning();
                 Debug.Log("Se ha creado una nueva tabla Q.");
             }
 
@@ -84,7 +82,7 @@ namespace GrupoH
             // Calcular el nuevo estado tras el movimiento
             int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition, mundo);
 
-            // Logs detallados para depuración
+            
             Debug.Log($"DoStep - Estado actual: {estadoActual}, Acción elegida: {accion}, Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y}), Nuevo estado: {nuevoEstado}");
 
             // Calcular recompensa y actualizar tabla Q si está en modo entrenamiento
@@ -92,7 +90,7 @@ namespace GrupoH
             {
                 float recompensa = CalcularRecompensa(nuevaPosicion);
                 recompensaTotal += recompensa;
-                ActualizarQ(estadoActual, accion, recompensa, nuevoEstado);
+                tablaQ.CalcularQ(estadoActual, accion, recompensa, nuevoEstado,parametros.alpha,parametros.gamma);
             }
 
 
@@ -202,30 +200,27 @@ namespace GrupoH
                 return -100f;
 
             if (nuevaDistancia > distanciaActual)
-                return 5f;
+            {
+                if(nuevaDistancia> 5f)
+                {
+                    return 50f;
+                }
+                return 20f;
+            }
+                
+                
 
             if (nuevaDistancia < distanciaActual)
                 return -5f;
 
-            return -1f;
+            return 0;
+            //return -1f;
         }
 
 
 
 
 
-        private void ActualizarQ(int estadoActual, int accion, float recompensa, int nuevoEstado)
-        {
-
-            float qActual = tablaQ.ObtenerQ(accion, estadoActual);
-            float mejorQ = tablaQ.ObtenerMejorAccion(nuevoEstado);
-
-            // Fórmula de actualización Q-Learning
-            float nuevoQ = qActual + parametros.alpha * (recompensa + parametros.gamma * mejorQ - qActual);
-            tablaQ.ActualizarQ(accion, estadoActual, nuevoQ);
-            Debug.Log($"Estado: {estadoActual}, Acción: {accion}, Q antes: {qActual}, Q después: {nuevoQ}");
-
-        }
         private int ObtenerEstado(CellInfo agente, CellInfo oponente)
         {
             // Calcular la posición relativa del oponente respecto al agente
@@ -237,7 +232,7 @@ namespace GrupoH
             int celdaAgente = agente.x * mundo.WorldSize.x + agente.y;
 
             // Combinar la posición del agente con la posición relativa del oponente
-            int estado = (celdaAgente * 9 + posicionRelativa) % numEstados;
+            int estado = (celdaAgente * 9 + posicionRelativa) % tablaQ.numEstados;
 
             // Añadir mensaje de depuración
             Debug.Log($"ObtenerEstado - Agente: ({agente.x}, {agente.y}), Enemigo: ({oponente.x}, {oponente.y}), Estado: {estado}");
@@ -311,13 +306,11 @@ namespace GrupoH
         public void GuardarTablaQ()
         {
             Debug.Log("Tabla Q guardada en archivo CSV.");
+
             try
             {
                 using (StreamWriter writer = new StreamWriter(RUTA_TABLA))
                 {
-                    // Escribir encabezados (opcional)
-                    writer.WriteLine("Estado,Accion,Q-Valor");
-
                     // Recorrer todos los estados y acciones de la tabla Q
                     for (int estado = 0; estado < tablaQ.numEstados; estado++)
                     {
@@ -338,10 +331,58 @@ namespace GrupoH
                 Debug.LogError($"Error al guardar la tabla Q en el archivo CSV: {ex.Message}");
             }
         }
+        /*
+        private void CargarTablaQ()
+        {
+            string rutaTabla = "Assets/Scripts/GrupoH/TablaQ.csv";
+            if (!File.Exists(rutaTabla))
+            {
+                Debug.LogError("No se encontró la tabla Q entrenada en la ruta especificada.");
+                return;
+            }
 
+            try
+            {
+                using (StreamReader reader = new StreamReader(rutaTabla))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        // Ignorar encabezados o líneas vacías
+                        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("Estado")) continue;
 
+                        // Separar por comas
+                        var parts = line.Split(',');
+                        if (parts.Length != 3)
+                        {
+                            Debug.LogWarning($"Línea inválida: {line}. Formato esperado: estado,acción,qValor");
+                            continue;
+                        }
+
+                        // Validar y convertir datos
+                        if (int.TryParse(parts[0], out int estado) &&
+                            int.TryParse(parts[1], out int accion) &&
+                            float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float qValor))
+                        {
+                            tablaQ.ActualizarQ(accion, estado, qValor);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Error al procesar la línea: {line}. No se pudieron parsear los valores.");
+                        }
+                    }
+                }
+                Debug.Log("Tabla Q cargada exitosamente.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
+            }
+        }
+        /*
         public void CargarTablaQ()
         {
+            //tablaQ = new TablaQLearning(numAcciones, numEstados);
             try
             {
                 using (StreamReader reader = new StreamReader(RUTA_TABLA))
@@ -362,7 +403,7 @@ namespace GrupoH
             {
                 //Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
             }
-        }
+        }*/
         private void OnGUI()
         {
             GUIStyle guiStyle = new GUIStyle(GUI.skin.label);
