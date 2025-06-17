@@ -214,34 +214,8 @@ namespace GrupoH
                 return -5f;
 
             return 0;
-            //return -1f;
+ 
         }
-
-
-
-
-
-        private int ObtenerEstado(CellInfo agente, CellInfo oponente)
-        {
-            // Calcular la posición relativa del oponente respecto al agente
-            int deltaX = Mathf.Clamp(oponente.x - agente.x, -1, 1) + 1; // Rango [0, 2]
-            int deltaY = Mathf.Clamp(oponente.y - agente.y, -1, 1) + 1; // Rango [0, 2]
-            int posicionRelativa = deltaX * 3 + deltaY; // Combinar en un rango [0, 8]
-
-            // Identificar celda única del agente
-            int celdaAgente = agente.x * mundo.WorldSize.x + agente.y;
-
-            // Combinar la posición del agente con la posición relativa del oponente
-            int estado = (celdaAgente * 9 + posicionRelativa) % tablaQ.numEstados;
-
-            // Añadir mensaje de depuración
-            Debug.Log($"ObtenerEstado - Agente: ({agente.x}, {agente.y}), Enemigo: ({oponente.x}, {oponente.y}), Estado: {estado}");
-
-            return estado;
-        }
-
-
-
 
         private float sumaDeRetornos = 0f; // Acumula los retornos de todos los episodios
         private int episodiosTotales = 0;  // Contador de episodios totales
@@ -331,79 +305,7 @@ namespace GrupoH
                 Debug.LogError($"Error al guardar la tabla Q en el archivo CSV: {ex.Message}");
             }
         }
-        /*
-        private void CargarTablaQ()
-        {
-            string rutaTabla = "Assets/Scripts/GrupoH/TablaQ.csv";
-            if (!File.Exists(rutaTabla))
-            {
-                Debug.LogError("No se encontró la tabla Q entrenada en la ruta especificada.");
-                return;
-            }
-
-            try
-            {
-                using (StreamReader reader = new StreamReader(rutaTabla))
-                {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        // Ignorar encabezados o líneas vacías
-                        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("Estado")) continue;
-
-                        // Separar por comas
-                        var parts = line.Split(',');
-                        if (parts.Length != 3)
-                        {
-                            Debug.LogWarning($"Línea inválida: {line}. Formato esperado: estado,acción,qValor");
-                            continue;
-                        }
-
-                        // Validar y convertir datos
-                        if (int.TryParse(parts[0], out int estado) &&
-                            int.TryParse(parts[1], out int accion) &&
-                            float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float qValor))
-                        {
-                            tablaQ.ActualizarQ(accion, estado, qValor);
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"Error al procesar la línea: {line}. No se pudieron parsear los valores.");
-                        }
-                    }
-                }
-                Debug.Log("Tabla Q cargada exitosamente.");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
-            }
-        }
-        /*
-        public void CargarTablaQ()
-        {
-            //tablaQ = new TablaQLearning(numAcciones, numEstados);
-            try
-            {
-                using (StreamReader reader = new StreamReader(RUTA_TABLA))
-                {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        var parts = line.Split(',');
-                        int estado = int.Parse(parts[0]);
-                        int accion = int.Parse(parts[1]);
-                        float qValor = float.Parse(parts[2]);
-                        tablaQ.ActualizarQ(accion, estado, qValor);
-                    }
-                }
-                Debug.Log("Tabla Q cargada exitosamente.");
-            }
-            catch (Exception ex)
-            {
-                //Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
-            }
-        }*/
+    
         private void OnGUI()
         {
             GUIStyle guiStyle = new GUIStyle(GUI.skin.label);

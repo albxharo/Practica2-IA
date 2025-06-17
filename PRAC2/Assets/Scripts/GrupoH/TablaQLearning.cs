@@ -37,8 +37,6 @@ namespace GrupoH
             }
             tablaQ = new float[numAcciones, numEstados];
 
-            //try
-            //{
             using (StreamReader reader = new StreamReader(rutaTabla))
                 {
                     string line;
@@ -69,11 +67,6 @@ namespace GrupoH
                     }
                 }
                 Debug.Log("Tabla Q cargada exitosamente.");
-            //}
-           /* catch (Exception ex)
-            {
-                Debug.LogError($"Error al cargar la tabla Q: {ex.Message}");
-            }*/
         }
 
 
@@ -143,15 +136,6 @@ namespace GrupoH
                 throw new ArgumentOutOfRangeException(nameof(accion), "Acción fuera de rango.");
             }
 
-            if (estado < 0 || estado >= numEstados)
-            {
-                throw new ArgumentOutOfRangeException(nameof(estado), "Estado fuera de rango.");
-            }
-        }
-
-        // Valida si el índice de estado es válido
-        private void ValidarEstado(int estado)
-        {
             if (estado < 0 || estado >= numEstados)
             {
                 throw new ArgumentOutOfRangeException(nameof(estado), "Estado fuera de rango.");
