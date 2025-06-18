@@ -37,25 +37,24 @@ namespace GrupoH
         public void Initialize(QMindTrainerParams qMindTrainerParams, WorldInfo worldInfo, INavigationAlgorithm navigationAlgorithm)
         {
             Debug.Log("QMindTrainer: initialized");
-            //Time.timeScale = 5f;
             // Inicialización
             parametros = qMindTrainerParams;
-
             mundo = worldInfo;
             algoritmoNavegacion = navigationAlgorithm;
 
+            //carga la tabla si existe
             if (File.Exists(RUTA_TABLA))
             {
                 tablaQ = new TablaQLearning(RUTA_TABLA);
                 //CargarTablaQ();
                 Debug.Log("Tabla Q cargada correctamente.");
             }
+            //si no, crea una nueva
             else
             {
                 tablaQ = new TablaQLearning();
                 Debug.Log("Se ha creado una nueva tabla Q.");
             }
-
 
             AgentPosition = mundo.RandomCell();
             OtherPosition = mundo.RandomCell();
@@ -83,7 +82,8 @@ namespace GrupoH
             int nuevoEstado = ObtenerEstado(nuevaPosicion, OtherPosition, mundo);
 
             
-            Debug.Log($"DoStep - Estado actual: {estadoActual}, Acción elegida: {accion}, Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y}), Nuevo estado: {nuevoEstado}");
+            Debug.Log($"DoStep - Estado actual: {estadoActual}, Acción elegida: {accion}," +
+                $" Nueva posición: ({nuevaPosicion.x}, {nuevaPosicion.y}), Nuevo estado: {nuevoEstado}");
 
             // Calcular recompensa y actualizar tabla Q si está en modo entrenamiento
             if (train)
@@ -121,7 +121,8 @@ namespace GrupoH
             {
                 CurrentStep++;
             }
-            Debug.Log($" De {AgentPosition} -> {nuevaPosicion} | Enemigo en {OtherPosition} | Distancia: {nuevaPosicion.Distance(OtherPosition, CellInfo.DistanceType.Manhattan)}");
+            Debug.Log($" De {AgentPosition} -> {nuevaPosicion} | Enemigo en " +
+                $"{OtherPosition} | Distancia: {nuevaPosicion.Distance(OtherPosition, CellInfo.DistanceType.Manhattan)}");
 
         }
 
@@ -172,7 +173,7 @@ namespace GrupoH
         }
 
 
-
+        //aplica la accion y devuelve la  nueva poscion del agente
         private CellInfo EjecutarAccion(int accion)
         {
             CellInfo nuevaPosicion = GrupoH.Movimiento.MovimientoAgente(accion, AgentPosition, mundo);
